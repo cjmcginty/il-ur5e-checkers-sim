@@ -1,0 +1,18 @@
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: ur5e_checkers_dev
+    tty: true
+    stdin_open: true
+
+    # Mount your repo into the container
+    volumes:
+      - .:/workspaces/ur5e-checkers-irl:cached
+
+    # For ROS 2 discovery within the container/network
+    environment:
+      - ROS_DOMAIN_ID=42
+
+    # If you later need host ↔ container ROS comms, we can adjust networking.
