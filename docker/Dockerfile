@@ -5,8 +5,9 @@ SHELL ["/bin/bash", "-lc"]
 
 # System + ROS + GZ deps
 RUN apt-get update && apt-get install -y \
-    python3-full python3-venv \
+    python3-full python3-venv python3-pip\
     python3-colcon-common-extensions \
+    python3-rosdep git curl \
     git build-essential \
     gz-harmonic \
     ros-jazzy-ros-gz \
@@ -14,6 +15,9 @@ RUN apt-get update && apt-get install -y \
     ros-jazzy-ros-gz-bridge \
     ros-jazzy-xacro \
     ros-jazzy-ur-description \
+    ros-jazzy-ros-gz-control \
+    ros-jazzy-ros2-control \
+    ros-jazzy-ros2-controllers \
     && rm -rf /var/lib/apt/lists/*
 
 # Create venv
