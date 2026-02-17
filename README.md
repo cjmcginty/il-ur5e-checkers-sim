@@ -38,10 +38,7 @@ XACRO="$(ros2 pkg prefix ur_description)/share/ur_description/urdf/ur.urdf.xacro
 
 xacro "$XACRO" ur_type:=ur5e name:=ur5e tf_prefix:="" > /tmp/ur5e.urdf
 
-ros2 run ros_gz_sim create \
-  -name ur5e \
-  -string "$(cat /tmp/ur5e.urdf)" \
-  -x 0 -y 0 -z 0.2
+ros2 run ros_gz_sim create -name ur5e -string "$(cat /tmp/ur5e.urdf)" -x 0 -y 0 -z 0.2
 
 Verify:
 
