@@ -1,34 +1,31 @@
-# ROS 2 Jazzy
+# ROS 2 Jazzy + Desktop tools
 FROM osrf/ros:jazzy-desktop-full
 
 SHELL ["/bin/bash", "-lc"]
 
-# System + ROS + GZ deps (Gazebo comes via ros-gz vendor packages)
+# System + ROS + Gazebo( Harmonic via vendor pkgs ) + ros2_control + bridge
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    git curl \
+    build-essential git curl \
     python3-full python3-venv python3-pip \
-    python3-colcon-common-extensions \
-    python3-rosdep \
+    python3-colcon-common-extensions python3-rosdep \
     ros-jazzy-ros-gz \
     ros-jazzy-ros-gz-sim \
     ros-jazzy-ros-gz-bridge \
-    ros-jazzy-ros-gz-control \
+    ros-jazzy-xacro \
     ros-jazzy-ros2-control \
     ros-jazzy-ros2-controllers \
-    ros-jazzy-xacro \
+    ros-jazzy-gz-ros2-control \
  && rm -rf /var/lib/apt/lists/*
 
-# Create venv
+# Create venv for ML + python build helpers
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:${PATH}"
 
-# Python deps needed for colcon/ament packages
-RUN pip install --no-cache-dir -U pip setuptools wheel && \
-    pip install --no-cache-dir catkin_pkg empy lark-parser pytest
-
-# ML deps (start minimal; recommend CPU-only for stability)
-RUN pip install --no-cache-dir numpy
+# Python deps (ROS build helpers + ML)
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir \
+      catkin_pkg empy lark-parser pytest \
+      numpy torch torchvision torchaudio
 
 # Workspace
 WORKDIR /workspaces/ur5e-checkers-irl
