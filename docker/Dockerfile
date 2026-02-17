@@ -12,6 +12,8 @@ RUN apt-get update && apt-get install -y \
     ros-jazzy-ros-gz \
     ros-jazzy-ros-gz-sim \
     ros-jazzy-ros-gz-bridge \
+    ros-jazzy-xacro \
+    ros-jazzy-ur-description \
     && rm -rf /var/lib/apt/lists/*
 
 # Create Python venv (avoids PEP 668)
