@@ -31,9 +31,11 @@ gz sim -s -v 3 /opt/ros/jazzy/opt/gz_sim_vendor/share/gz/gz-sim8/worlds/empty.sd
 Then in a new terminal spawn in the UR5e:
 
 source /opt/ros/jazzy/setup.bash
+
 source /workspaces/ur5e-checkers-irl/ros_ws/install/setup.bash
 
 XACRO="$(ros2 pkg prefix ur_description)/share/ur_description/urdf/ur.urdf.xacro"
+
 xacro "$XACRO" ur_type:=ur5e name:=ur5e tf_prefix:="" > /tmp/ur5e.urdf
 
 ros2 run ros_gz_sim create \
