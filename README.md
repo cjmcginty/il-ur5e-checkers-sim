@@ -10,6 +10,18 @@ type:
 
 wsl
 
+Rebuild Docker Image:
+
+cd ~/dev/il-ur5e-checkers-sim
+
+docker compose down
+
+docker compose build --no-cache
+
+docker compose up -d
+
+docker compose exec dev bash
+
 then to get into container
 
 cd ~/dev/il-ur5e-checkers-sim
