@@ -16,20 +16,19 @@ RUN apt-get update && apt-get install -y \
     ros-jazzy-ur-description \
     && rm -rf /var/lib/apt/lists/*
 
-# Create Python venv (avoids PEP 668)
-ENV VENV_PATH=/opt/venv
-RUN python3 -m venv ${VENV_PATH}
-ENV PATH="${VENV_PATH}/bin:${PATH}"
+# Create venv
+RUN apt-get update && apt-get install -y python3-full python3-venv && rm -rf /var/lib/apt/lists/*
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:${PATH}"
 
-# Upgrade pip tooling + install python deps needed for ROS builds + ML
+# Install Python deps needed for colcon/ament packages + ML
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir \
-      numpy torch torchvision torchaudio \
-      catkin_pkg empy lark-parser pytest
+      catkin_pkg empy lark-parser pytest \
+      numpy torch torchvision torchaudio
 
-# Make venv writable for the non-root user (uid 1000 is your WSL user)
+# Make venv writable by your default UID (1000)
 RUN chown -R 1000:1000 /opt/venv
-
 
 # Workspace
 WORKDIR /workspaces/ur5e-checkers-irl
