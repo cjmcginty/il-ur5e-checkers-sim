@@ -21,9 +21,15 @@ ENV VENV_PATH=/opt/venv
 RUN python3 -m venv ${VENV_PATH}
 ENV PATH="${VENV_PATH}/bin:${PATH}"
 
-# ML deps
+# Upgrade pip tooling + install python deps needed for ROS builds + ML
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir numpy torch torchvision torchaudio
+    pip install --no-cache-dir \
+      numpy torch torchvision torchaudio \
+      catkin_pkg empy lark-parser pytest
+
+# Make venv writable for the non-root user (uid 1000 is your WSL user)
+RUN chown -R 1000:1000 /opt/venv
+
 
 # Workspace
 WORKDIR /workspaces/ur5e-checkers-irl
