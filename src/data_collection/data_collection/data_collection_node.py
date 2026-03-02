@@ -30,13 +30,15 @@ class DataCollectionNode(Node):
         self.declare_parameter("ee_frame", "tool0")
         self.declare_parameter(
             "joint_traj_cmd_topic",
-            "/joint_trajectory_controller/joint_trajectory"
+            "/ur5e_arm_controller/joint_trajectory"
             )
+        self.declare_parameter("sample_hz", 30.0)
         
         self.output_dir = self.get_parameter("output_dir").value
         self.base_frame = self.get_parameter("base_frame").value
         self.ee_frame = self.get_parameter("ee_frame").value
         self.cmd_topic = self.get_parameter("joint_traj_cmd_topic").value
+        self.sample_hz = float(self.get_parameter("sample_hz").value)
         
         os.makedirs(self.output_dir, exist_ok=True)
         
@@ -48,6 +50,7 @@ class DataCollectionNode(Node):
         self.latest_joint_state = None
         self.latest_goal_pose = None
         self.latest_gripper_state = 0.0
+        self.latest_cmd_msg = None
         
         self.joint_names = []
         self.name_to_index = {}
@@ -90,6 +93,9 @@ class DataCollectionNode(Node):
         self.create_service(Trigger, "/il/start_recording", self.start_recording)
         self.create_service(Trigger, "/il/stop_recording", self.stop_recording)
         
+        period = 1.0 / max(self.sample_hz, 1e-3)
+        self.create_timer(period, self.sample_tick)
+        
         self.get_logger().info("Data collection node ready.")
         self.get_logger().info(f"Listening to trajectory topic: {self.cmd_topic}")
         
@@ -112,20 +118,28 @@ class DataCollectionNode(Node):
         self.latest_gripper_state = msg.data
         
     def joint_traj_callback(self, msg):
-        if not self.recording:
-            return
-        
         if len(msg.points) == 0:
             return
-        
+        if not msg.points[0].positions:
+            return
+        self.latest_cmd_msg = msg
+
+    def sample_tick(self):
+        if not self.recording:
+            return
+        if self.latest_joint_state is None:
+            return
+        if self.latest_cmd_msg is None:
+            return
+
         obs = self.build_observation()
-        act = self.extract_action(msg)
-        
+        act = self.extract_action(self.latest_cmd_msg)
+
         if obs is None or act is None:
             return
-        
+
         t = self.get_clock().now().nanoseconds * 1e-9
-        
+
         self.obs_buffer.append(obs)
         self.act_buffer.append(act)
         self.time_buffer.append(t)
