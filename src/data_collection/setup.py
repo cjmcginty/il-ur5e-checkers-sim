@@ -25,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
 		'data_collection_node = data_collection.data_collection_node:main',
+        "bc_policy_node = data_collection.bc_policy_node:main",
         ],
     },
 )
