@@ -8,6 +8,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential git curl \
     python3-full python3-venv python3-pip \
     python3-colcon-common-extensions python3-rosdep \
+    nano less \
+    ros-jazzy-ur-description \
     ros-jazzy-ros-gz \
     ros-jazzy-ros-gz-sim \
     ros-jazzy-ros-gz-bridge \
