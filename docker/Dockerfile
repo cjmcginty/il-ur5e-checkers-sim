@@ -19,13 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-jazzy-gz-ros2-control \
  && rm -rf /var/lib/apt/lists/*
 
-# Create venv for ML + python build helpers
-RUN python3 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:${PATH}"
-
-# Python deps (ROS build helpers + ML)
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir \
+# Python deps (ROS build helpers + ML) - install into system python so ros2 nodes can import them
+RUN pip3 install --break-system-packages --no-cache-dir \
       catkin_pkg empy lark-parser pytest \
       numpy torch torchvision torchaudio
 
