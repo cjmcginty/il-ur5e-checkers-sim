@@ -1,0 +1,73 @@
+mesh_files:
+  base:
+    visual:
+      mesh:
+        package: ur_description
+        path: meshes/ur5e/visual/base.dae
+    collision:
+      mesh:
+        package: ur_description
+        path: meshes/ur5e/visual/base.dae
+
+  shoulder:
+    visual:
+      mesh:
+        package: ur_description
+        path: meshes/ur5e/visual/shoulder.dae
+    collision:
+      mesh:
+        package: ur_description
+        path: meshes/ur5e/visual/shoulder.dae
+
+  upper_arm:
+    visual:
+      mesh:
+        package: ur_description
+        path: meshes/ur5e/visual/upperarm.dae
+    collision:
+      mesh:
+        package: ur_description
+        path: meshes/ur5e/visual/upperarm.dae
+
+  forearm:
+    visual:
+      mesh:
+        package: ur_description
+        path: meshes/ur5e/visual/forearm.dae
+    collision:
+      mesh:
+        package: ur_description
+        path: meshes/ur5e/visual/forearm.dae
+
+  wrist_1:
+    visual:
+      mesh:
+        package: ur_description
+        path: meshes/ur5e/visual/wrist1.dae
+    collision:
+      mesh:
+        package: ur_description
+        path: meshes/ur5e/visual/wrist1.dae
+    visual_offset: -0.127
+
+  wrist_2:
+    visual:
+      mesh:
+        package: ur_description
+        path: meshes/ur5e/visual/wrist2.dae
+    collision:
+      mesh:
+        package: ur_description
+        path: meshes/ur5e/visual/wrist2.dae
+    visual_offset: -0.0997
+
+  wrist_3:
+    visual:
+      mesh:
+        package: ur_description
+        path: meshes/ur5e/visual/wrist3.dae
+    collision:
+      mesh:
+        package: ur_description
+        path: meshes/ur5e/visual/wrist3.dae
+    visual_offset: -0.0989
