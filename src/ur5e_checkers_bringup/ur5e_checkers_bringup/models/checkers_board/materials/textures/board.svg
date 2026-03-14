@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800" viewBox="0 0 800 800">
+  <rect width="800" height="800" fill="#d2b48c"></rect>
+
+  <!-- dark playable squares -->
+  <rect x="100" y="0" width="100" height="100" fill="#1f1f1f"></rect>
+  <rect x="300" y="0" width="100" height="100" fill="#1f1f1f"></rect>
+  <rect x="500" y="0" width="100" height="100" fill="#1f1f1f"></rect>
+  <rect x="700" y="0" width="100" height="100" fill="#1f1f1f"></rect>
+
+  <rect x="0" y="100" width="100" height="100" fill="#1f1f1f"></rect>
+  <rect x="200" y="100" width="100" height="100" fill="#1f1f1f"></rect>
+  <rect x="400" y="100" width="100" height="100" fill="#1f1f1f"></rect>
+  <rect x="600" y="100" width="100" height="100" fill="#1f1f1f"></rect>
+
+  <rect x="100" y="200" width="100" height="100" fill="#1f1f1f"></rect>
+  <rect x="300" y="200" width="100" height="100" fill="#1f1f1f"></rect>
+  <rect x="500" y="200" width="100" height="100" fill="#1f1f1f"></rect>
+  <rect x="700" y="200" width="100" height="100" fill="#1f1f1f"></rect>
+
+  <rect x="0" y="300" width="100" height="100" fill="#1f1f1f"></rect>
+  <rect x="200" y="300" width="100" height="100" fill="#1f1f1f"></rect>
+  <rect x="400" y="300" width="100" height="100" fill="#1f1f1f"></rect>
+  <rect x="600" y="300" width="100" height="100" fill="#1f1f1f"></rect>
+
+  <rect x="100" y="400" width="100" height="100" fill="#1f1f1f"></rect>
+  <rect x="300" y="400" width="100" height="100" fill="#1f1f1f"></rect>
+  <rect x="500" y="400" width="100" height="100" fill="#1f1f1f"></rect>
+  <rect x="700" y="400" width="100" height="100" fill="#1f1f1f"></rect>
+
+  <rect x="0" y="500" width="100" height="100" fill="#1f1f1f"></rect>
+  <rect x="200" y="500" width="100" height="100" fill="#1f1f1f"></rect>
+  <rect x="400" y="500" width="100" height="100" fill="#1f1f1f"></rect>
+  <rect x="600" y="500" width="100" height="100" fill="#1f1f1f"></rect>
+
+  <rect x="100" y="600" width="100" height="100" fill="#1f1f1f"></rect>
+  <rect x="300" y="600" width="100" height="100" fill="#1f1f1f"></rect>
+  <rect x="500" y="600" width="100" height="100" fill="#1f1f1f"></rect>
+  <rect x="700" y="600" width="100" height="100" fill="#1f1f1f"></rect>
+
+  <rect x="0" y="700" width="100" height="100" fill="#1f1f1f"></rect>
+  <rect x="200" y="700" width="100" height="100" fill="#1f1f1f"></rect>
+  <rect x="400" y="700" width="100" height="100" fill="#1f1f1f"></rect>
+  <rect x="600" y="700" width="100" height="100" fill="#1f1f1f"></rect>
+
+  <!-- border -->
+  <rect x="2" y="2" width="796" height="796" fill="none" stroke="#6f4e37" stroke-width="8"></rect>
+</svg>

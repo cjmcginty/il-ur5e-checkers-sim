@@ -2,21 +2,35 @@
 <sdf version="1.7">
   <model name="checkers_board">
     <static>true</static>
-    <link name="link">
-      <visual name="visual">
-        <geometry>
-          <box>
-            <size>0.5 0.5 0.02</size>
-          </box>
-        </geometry>
-      </visual>
+
+    <link name="board_link">
       <collision name="collision">
         <geometry>
           <box>
-            <size>0.5 0.5 0.02</size>
+            <size>0.32 0.32 0.012</size>
           </box>
         </geometry>
       </collision>
+
+      <visual name="visual">
+        <geometry>
+          <box>
+            <size>0.32 0.32 0.012</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>1 1 1 1</ambient>
+          <diffuse>1 1 1 1</diffuse>
+          <specular>0.1 0.1 0.1 1</specular>
+          <pbr>
+            <metal>
+              <albedo_map>model://checkers_board/materials/textures/board.svg</albedo_map>
+              <roughness>0.8</roughness>
+              <metalness>0.0</metalness>
+            </metal>
+          </pbr>
+        </material>
+      </visual>
     </link>
   </model>
 </sdf>
