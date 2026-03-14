@@ -27,7 +27,6 @@ def generate_launch_description():
         " tf_prefix:="
     ])
 
-    # Pass the world path as part of gz_args (single launch arg)
     gz = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([
@@ -41,10 +40,22 @@ def generate_launch_description():
         }.items()
     )
 
+    clock_bridge = Node(
+        package="ros_gz_bridge",
+        executable="parameter_bridge",
+        arguments=["/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"],
+        output="screen"
+    )
+
     rsp = Node(
         package="robot_state_publisher",
         executable="robot_state_publisher",
-        parameters=[{"robot_description": robot_description}],
+        parameters=[
+            {
+                "robot_description": robot_description,
+                "use_sim_time": True
+            }
+        ],
         output="screen"
     )
 
@@ -96,31 +107,61 @@ def generate_launch_description():
         output="screen"
     )
 
-    spawn_red_1 = ExecuteProcess(
-        cmd=[
-            "ros2", "run", "ros_gz_sim", "create",
-            "-name", "red_checker_1",
-            "-file", PathJoinSubstitution([
-                FindPackageShare("ur5e_checkers_bringup"),
-                "models", "red_checker", "model.sdf"
-            ]),
-            "-x", "0.52", "-y", "0.10", "-z", "0.03"
-        ],
-        output="screen"
-    )
+    # Board geometry assumptions
+    board_center_x = 0.6
+    board_center_y = 0.0
+    board_size = 0.40
+    square = board_size / 8.0
+    piece_z = 0.03
 
-    spawn_black_1 = ExecuteProcess(
-        cmd=[
-            "ros2", "run", "ros_gz_sim", "create",
-            "-name", "black_checker_1",
-            "-file", PathJoinSubstitution([
-                FindPackageShare("ur5e_checkers_bringup"),
-                "models", "black_checker", "model.sdf"
-            ]),
-            "-x", "0.68", "-y", "-0.10", "-z", "0.03"
-        ],
-        output="screen"
-    )
+    red_spawns = []
+    black_spawns = []
+
+    # Red pieces: top 3 rows
+    red_count = 1
+    for row in range(3):
+        y = board_center_y + (board_size / 2.0) - (row + 0.5) * square
+        for col in range(8):
+            if (row + col) % 2 == 1:
+                x = board_center_x - (board_size / 2.0) + (col + 0.5) * square
+                red_spawns.append(
+                    ExecuteProcess(
+                        cmd=[
+                            "ros2", "run", "ros_gz_sim", "create",
+                            "-name", f"red_checker_{red_count}",
+                            "-file", PathJoinSubstitution([
+                                FindPackageShare("ur5e_checkers_bringup"),
+                                "models", "red_checker", "model.sdf"
+                            ]),
+                            "-x", str(x), "-y", str(y), "-z", str(piece_z)
+                        ],
+                        output="screen"
+                    )
+                )
+                red_count += 1
+
+    # Black pieces: bottom 3 rows
+    black_count = 1
+    for row in range(5, 8):
+        y = board_center_y + (board_size / 2.0) - (row + 0.5) * square
+        for col in range(8):
+            if (row + col) % 2 == 1:
+                x = board_center_x - (board_size / 2.0) + (col + 0.5) * square
+                black_spawns.append(
+                    ExecuteProcess(
+                        cmd=[
+                            "ros2", "run", "ros_gz_sim", "create",
+                            "-name", f"black_checker_{black_count}",
+                            "-file", PathJoinSubstitution([
+                                FindPackageShare("ur5e_checkers_bringup"),
+                                "models", "black_checker", "model.sdf"
+                            ]),
+                            "-x", str(x), "-y", str(y), "-z", str(piece_z)
+                        ],
+                        output="screen"
+                    )
+                )
+                black_count += 1
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -130,13 +171,14 @@ def generate_launch_description():
         ),
 
         gz,
+        clock_bridge,
         rsp,
         static_tf,
 
         TimerAction(period=2.0, actions=[spawn_robot]),
         TimerAction(period=3.0, actions=[board_spawn]),
-        TimerAction(period=4.0, actions=[spawn_red_1]),
-        TimerAction(period=4.5, actions=[spawn_black_1]),
-        TimerAction(period=6.0, actions=[spawn_jsb]),
-        TimerAction(period=7.0, actions=[spawn_traj]),
+        TimerAction(period=4.0, actions=red_spawns),
+        TimerAction(period=5.0, actions=black_spawns),
+        TimerAction(period=6.5, actions=[spawn_jsb]),
+        TimerAction(period=7.5, actions=[spawn_traj]),
     ])
