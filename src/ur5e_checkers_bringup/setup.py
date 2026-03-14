@@ -1,27 +1,47 @@
 from setuptools import setup
-from glob import glob
 import os
 
 package_name = 'ur5e_checkers_bringup'
+
+
+def package_files(source_dirs):
+    data_files = []
+
+    for source_dir in source_dirs:
+        for path, _, filenames in os.walk(source_dir):
+            if not filenames:
+                continue
+
+            rel_path = os.path.relpath(path, os.path.join(package_name))
+            install_path = os.path.join('share', package_name, rel_path)
+            file_paths = [os.path.join(path, f) for f in filenames]
+            data_files.append((install_path, file_paths))
+
+    return data_files
+
+
+data_files = [
+    ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
+    ('share/' + package_name, ['package.xml']),
+]
+
+data_files += package_files([
+    'ur5e_checkers_bringup/launch',
+    'ur5e_checkers_bringup/config',
+    'ur5e_checkers_bringup/urdf',
+    'ur5e_checkers_bringup/worlds',
+    'ur5e_checkers_bringup/models',
+])
 
 setup(
     name=package_name,
     version='0.0.0',
     packages=[package_name],
-    data_files=[
-        ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
-        ('share/' + package_name, ['package.xml']),
-        (os.path.join('share', package_name, 'launch'), glob('ur5e_checkers_bringup/launch/*.py')),
-        (os.path.join('share', package_name, 'config'), glob('ur5e_checkers_bringup/config/*.yaml')),
-        (os.path.join('share', package_name, 'urdf'), glob('ur5e_checkers_bringup/urdf/*')),
-        (os.path.join('share', package_name, 'worlds'), glob('ur5e_checkers_bringup/worlds/*')),
-        (os.path.join('share', package_name, 'models', 'checkers_board'),
-         glob('ur5e_checkers_bringup/models/checkers_board/*')),
-    ],
+    data_files=data_files,
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='nat',
-    maintainer_email='nat@example.com',
+    maintainer='Natalie Essig',
+    maintainer_email='nnessig@wpi.edu',
     description='UR5e checkers simulation bringup (Gazebo Sim + gz_ros2_control)',
     license='Apache-2.0',
     tests_require=['pytest'],

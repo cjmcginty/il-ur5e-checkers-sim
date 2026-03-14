@@ -19,16 +19,9 @@
           </box>
         </geometry>
         <material>
-          <ambient>1 1 1 1</ambient>
-          <diffuse>1 1 1 1</diffuse>
-          <specular>0.1 0.1 0.1 1</specular>
-          <pbr>
-            <metal>
-              <albedo_map>model://checkers_board/materials/textures/board.svg</albedo_map>
-              <roughness>0.8</roughness>
-              <metalness>0.0</metalness>
-            </metal>
-          </pbr>
+          <ambient>0.15 0.15 0.15 1</ambient>
+          <diffuse>0.2 0.2 0.2 1</diffuse>
+          <specular>0.05 0.05 0.05 1</specular>
         </material>
       </visual>
     </link>
