@@ -27,7 +27,7 @@ def generate_launch_description():
         " tf_prefix:="
     ])
 
-    # ✅ Correct: pass the world path as part of gz_args (single launch arg)
+    # Pass the world path as part of gz_args (single launch arg)
     gz = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([
@@ -96,6 +96,32 @@ def generate_launch_description():
         output="screen"
     )
 
+    spawn_red_1 = ExecuteProcess(
+        cmd=[
+            "ros2", "run", "ros_gz_sim", "create",
+            "-name", "red_checker_1",
+            "-file", PathJoinSubstitution([
+                FindPackageShare("ur5e_checkers_bringup"),
+                "models", "red_checker", "model.sdf"
+            ]),
+            "-x", "0.52", "-y", "0.10", "-z", "0.03"
+        ],
+        output="screen"
+    )
+
+    spawn_black_1 = ExecuteProcess(
+        cmd=[
+            "ros2", "run", "ros_gz_sim", "create",
+            "-name", "black_checker_1",
+            "-file", PathJoinSubstitution([
+                FindPackageShare("ur5e_checkers_bringup"),
+                "models", "black_checker", "model.sdf"
+            ]),
+            "-x", "0.68", "-y", "-0.10", "-z", "0.03"
+        ],
+        output="screen"
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument(
             "spawn_board",
@@ -109,6 +135,8 @@ def generate_launch_description():
 
         TimerAction(period=2.0, actions=[spawn_robot]),
         TimerAction(period=3.0, actions=[board_spawn]),
+        TimerAction(period=4.0, actions=[spawn_red_1]),
+        TimerAction(period=4.5, actions=[spawn_black_1]),
         TimerAction(period=6.0, actions=[spawn_jsb]),
         TimerAction(period=7.0, actions=[spawn_traj]),
     ])
