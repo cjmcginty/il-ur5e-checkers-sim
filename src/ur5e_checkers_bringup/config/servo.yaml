@@ -1,0 +1,24 @@
+/**:
+  ros__parameters:
+    use_sim_time: true
+    moveit_servo.move_group_name: ur_manipulator
+    moveit_servo.ee_frame_name: tool0
+    moveit_servo.planning_frame: base_link
+    moveit_servo.command_frame: base_link
+    
+    # REQUIRED (dotted keys)
+    moveit_servo.move_group_name: ur_manipulator
+    moveit_servo.ee_frame_name: tool0
+    moveit_servo.command_frame: base_link
+
+    # Inputs (what servo_keyboard_input publishes)
+    moveit_servo.cartesian_command_in_topic: /servo_node/delta_twist_cmds
+    moveit_servo.joint_command_in_topic: /servo_node/delta_joint_cmds
+
+    # Output to your existing controller
+    moveit_servo.command_out_type: trajectory_msgs/JointTrajectory
+    moveit_servo.command_out_topic: /ur5e_arm_controller/joint_trajectory
+
+    moveit_servo.publish_period: 0.02
+    moveit_servo.apply_twist_commands_about_ee_frame: false
+    moveit_servo.check_collisions: false

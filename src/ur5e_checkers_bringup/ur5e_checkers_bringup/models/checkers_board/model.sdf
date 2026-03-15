@@ -1,22 +1,47 @@
-<?xml version="1.0" ?>
-<sdf version="1.7">
+<sdf version="1.9">
   <model name="checkers_board">
     <static>true</static>
-    <link name="link">
-      <visual name="visual">
-        <geometry>
-          <box>
-            <size>0.5 0.5 0.02</size>
-          </box>
-        </geometry>
-      </visual>
+
+    <pose>0 0 0 0 0 0</pose>
+
+    <link name="board_link">
+      <!-- Collision: simple box -->
       <collision name="collision">
         <geometry>
+          <!-- board size: 0.5m x 0.5m x 0.02m (edit as you like) -->
           <box>
-            <size>0.5 0.5 0.02</size>
+            <size>0.50 0.50 0.02</size>
           </box>
         </geometry>
       </collision>
+
+      <!-- Visual: same box, but textured -->
+      <visual name="visual">
+        <geometry>
+          <box>
+            <size>0.50 0.50 0.02</size>
+          </box>
+        </geometry>
+
+        <!-- Put the texture on the box -->
+        <material>
+          <!-- A little lighting baseline -->
+          <ambient>1 1 1 1</ambient>
+          <diffuse>1 1 1 1</diffuse>
+          <specular>0.1 0.1 0.1 1</specular>
+
+          <!-- PBR (gz-sim / Ogre2) -->
+          <pbr>
+            <metal>
+              <!-- The checkerboard image -->
+              <albedo_map>file:///workspaces/ur5e-checkers-irl/src/ur5e_checkers_bringup/ur5e_checkers_bringup/models/checkers_board/materials/textures/checkerboard.png</albedo_map>
+              <!-- Optional tuning -->
+              <roughness>0.9</roughness>
+              <metalness>0.0</metalness>
+            </metal>
+          </pbr>
+        </material>
+      </visual>
     </link>
   </model>
 </sdf>
