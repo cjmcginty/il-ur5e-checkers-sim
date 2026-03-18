@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-jazzy-ros2-control \
     ros-jazzy-ros2-controllers \
     ros-jazzy-gz-ros2-control \
+    ros-jazzy-teleop-twist-keyboard \
  && rm -rf /var/lib/apt/lists/*
 
 # Python deps (ROS build helpers + ML) - install into system python so ros2 nodes can import them
