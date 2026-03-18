@@ -46,6 +46,9 @@ setup(
     license='Apache-2.0',
     tests_require=['pytest'],
     entry_points={
-        'console_scripts': [],
+        'console_scripts': [
+            'checkers_game_node = ur5e_checkers_bringup.checkers_game_node:main',
+            'test_checkers = ur5e_checkers_bringup.test_checkers:main',
+        ],
     },
 )

@@ -47,6 +47,27 @@ def generate_launch_description():
         output="screen"
     )
 
+    pose_bridge = Node(
+        package="ros_gz_bridge",
+        executable="parameter_bridge",
+        arguments=[
+            "/world/checkers_world/pose@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V"
+        ],
+        output="screen",
+    )
+
+    checkers_node = Node(
+        package="ur5e_checkers_bringup",
+        executable="checkers_game_node",
+        output="screen",
+        parameters=[
+            {
+                "model_states_topic": "/world/checkers_world/pose",
+                "update_hz": 5.0,
+            }
+        ],
+    )
+
     rsp = Node(
         package="robot_state_publisher",
         executable="robot_state_publisher",
@@ -172,6 +193,8 @@ def generate_launch_description():
 
         gz,
         clock_bridge,
+        pose_bridge,
+        checkers_node,
         rsp,
         static_tf,
 
