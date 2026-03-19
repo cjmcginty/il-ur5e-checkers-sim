@@ -41,9 +41,4 @@ install(
   LIBRARY DESTINATION lib
 )
 
-install(
-  DIRECTORY include/
-  DESTINATION include
-)
-
 ament_package()

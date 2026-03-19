@@ -82,9 +82,11 @@ public:
 
           json << "{"
                << "\"name\":\"" << name << "\","
+               << "\"position\":{"
                << "\"x\":" << pose.Pos().X() << ","
                << "\"y\":" << pose.Pos().Y() << ","
                << "\"z\":" << pose.Pos().Z()
+               << "}"
                << "}";
 
           first = false;
