@@ -109,7 +109,7 @@ def generate_launch_description():
     spawn_traj = ExecuteProcess(
         cmd=[
             "ros2", "run", "controller_manager", "spawner",
-            "ur5e_arm_controller",
+            "forward_position_controller",
             "--controller-manager", "/controller_manager"
         ],
         output="screen"
