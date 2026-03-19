@@ -7,7 +7,7 @@ from rclpy.node import Node
 
 from std_msgs.msg import String
 
-from ur5e_checkers_bringup.board import CheckersBoard
+from ur5e_checkers_bringup.board import CheckersBoard, Move
 
 
 class CheckersGameNode(Node):
@@ -137,15 +137,54 @@ class CheckersGameNode(Node):
         if detected_signature == self.prev_board_signature:
             return
 
-        if self.have_seen_initial_board:
-            self.flip_turn()
-        else:
+        if not self.have_seen_initial_board:
+            self.board.board = detected_board
+            self.prev_board_signature = detected_signature
             self.have_seen_initial_board = True
 
-        self.board.board = detected_board
-        self.prev_board_signature = detected_signature
+            board_text = self.format_board(self.board.board)
+            legal_moves = self.board.legal_moves()
+            legal_move_strings = [self.move_to_string(move) for move in legal_moves]
 
-        board_text = self.format_board(detected_board)
+            self.get_logger().info("Initialized board from simulation:")
+            self.get_logger().info("\n" + board_text)
+            self.get_logger().info(f"Current turn: {self.board.turn}")
+            self.get_logger().info(f"Legal moves available: {len(legal_move_strings)}")
+
+            if legal_move_strings:
+                self.get_logger().info(
+                    f"Legal moves: {json.dumps(legal_move_strings, ensure_ascii=True)}"
+                )
+
+            self.publish_board_state(board_text)
+            self.publish_legal_moves(legal_move_strings)
+            return
+
+        inferred_move = self.infer_move_from_board_change(self.board.board, detected_board)
+
+        if inferred_move is not None and inferred_move in self.board.legal_moves():
+            try:
+                self.board.apply_move(inferred_move)
+                self.get_logger().info(
+                    f"Applied detected move: {self.move_to_string(inferred_move)}"
+                )
+            except ValueError as e:
+                self.get_logger().warning(
+                    f"Failed to apply inferred move {self.move_to_string(inferred_move)}: {e}"
+                )
+                self.board.board = detected_board
+                self.flip_turn()
+        else:
+            self.get_logger().warning(
+                "Could not match detected board change to a legal move. "
+                "Syncing board directly from simulation."
+            )
+            self.board.board = detected_board
+            self.flip_turn()
+
+        self.prev_board_signature = self.board_signature(self.board.board)
+
+        board_text = self.format_board(self.board.board)
         legal_moves = self.board.legal_moves()
         legal_move_strings = [self.move_to_string(move) for move in legal_moves]
 
@@ -214,7 +253,7 @@ class CheckersGameNode(Node):
             board[row][col] = piece_symbol
 
         return board
-    
+
     def model_name_to_symbol(self, model_name: str) -> Optional[str]:
         if model_name.startswith("red_checker_"):
             return "r"
@@ -293,6 +332,47 @@ class CheckersGameNode(Node):
         center_y = self.board_max_y - (row + 0.5) * self.square_size
         return math.hypot(x - center_x, y - center_y)
 
+    def infer_move_from_board_change(
+        self,
+        old_board: List[List[str]],
+        new_board: List[List[str]],
+    ) -> Optional[Move]:
+        player = self.board.turn
+        opponent = "b" if player == "r" else "r"
+
+        src = None
+        dst = None
+        removed_opponents = 0
+
+        for r in range(8):
+            for c in range(8):
+                old_cell = old_board[r][c]
+                new_cell = new_board[r][c]
+
+                if old_cell == new_cell:
+                    continue
+
+                if old_cell == player and new_cell == ".":
+                    if src is not None:
+                        return None
+                    src = (r, c)
+                elif old_cell == "." and new_cell == player:
+                    if dst is not None:
+                        return None
+                    dst = (r, c)
+                elif old_cell == opponent and new_cell == ".":
+                    removed_opponents += 1
+                else:
+                    return None
+
+        if src is None or dst is None:
+            return None
+
+        if removed_opponents > 1:
+            return None
+
+        return Move(src, dst)
+
     # ------------------------------------------------------------------
     # Formatting / publishing
     # ------------------------------------------------------------------
@@ -304,10 +384,6 @@ class CheckersGameNode(Node):
         return "\n".join(" ".join(row) for row in board)
 
     def move_to_string(self, move) -> str:
-        """
-        Expected move shape from board.py:
-            ((from_row, from_col), (to_row, to_col))
-        """
         try:
             from_row, from_col = move.bgn
             to_row, to_col = move.dst

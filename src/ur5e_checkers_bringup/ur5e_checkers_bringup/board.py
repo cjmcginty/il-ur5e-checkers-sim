@@ -15,8 +15,8 @@ class Move:
 
 # r is red, b is black, . is empty
 # no kings yet
-# red moves upward toward row 0
-# black moves downward toward row 7
+# red moves downward toward row 7
+# black moves upward toward row 0
 class CheckersBoard:
     def __init__(self) -> None:
         # create empty 8x8 board
@@ -31,17 +31,17 @@ class CheckersBoard:
     # place starting pieces on dark squares
     # dark squares are where row + col is odd
     def _setup(self) -> None:
-        # top 3 rows are black pieces
+        # top 3 rows are red pieces
         for r in range(3):
             for c in range(8):
                 if (r + c) % 2 == 1:
-                    self.board[r][c] = "b"
+                    self.board[r][c] = "r"
 
-        # bottom 3 rows are red pieces
+        # bottom 3 rows are black pieces
         for r in range(5, 8):
             for c in range(8):
                 if (r + c) % 2 == 1:
-                    self.board[r][c] = "r"
+                    self.board[r][c] = "b"
 
     # return a deep copy of the board, will be useful later for search or RL
     def clone(self) -> "CheckersBoard":
@@ -76,7 +76,7 @@ class CheckersBoard:
 
     # return the allowed diagonal movement directions for a given player
     def _move_directions(self, player: str):
-        return [(-1, -1), (-1, 1)] if player == "r" else [(1, -1), (1, 1)]
+        return [(1, -1), (1, 1)] if player == "r" else [(-1, -1), (-1, 1)]
 
     # return all legal single-step moves from a source square
     def legal_moves_from(self, bgn: Coord) -> List[Move]:
@@ -156,16 +156,16 @@ class CheckersBoard:
         # switch turn
         self.turn = "b" if self.turn == "r" else "r"
 
-# return the winner if the game is over, otherwise return None
-def winner(self) -> str | None:
-    if len(self.all_pieces("r")) == 0:
-        return "b"
-    if len(self.all_pieces("b")) == 0:
-        return "r"
-    if len(self.legal_moves()) == 0:
-        return "b" if self.turn == "r" else "r"
-    return None
+    # return the winner if the game is over, otherwise return None
+    def winner(self) -> str | None:
+        if len(self.all_pieces("r")) == 0:
+            return "b"
+        if len(self.all_pieces("b")) == 0:
+            return "r"
+        if len(self.legal_moves()) == 0:
+            return "b" if self.turn == "r" else "r"
+        return None
 
-# return whether the game is over
-def is_game_over(self) -> bool:
-    return self.winner() is not None
+    # return whether the game is over
+    def is_game_over(self) -> bool:
+        return self.winner() is not None
