@@ -1,9 +1,6 @@
-import os
-
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, TimerAction, IncludeLaunchDescription, SetEnvironmentVariable
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, TimerAction, SetEnvironmentVariable
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, Command, EnvironmentVariable
-from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
@@ -46,17 +43,22 @@ def generate_launch_description():
         ]
     )
 
-    gz = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathJoinSubstitution([
-                FindPackageShare("ros_gz_sim"),
-                "launch",
-                "gz_sim.launch.py"
-            ])
-        ),
-        launch_arguments={
-            "gz_args": ["-r -v4 ", world_path]
-        }.items()
+    # Launch Gazebo directly since this path worked in manual testing
+    gz = ExecuteProcess(
+        cmd=[
+            "gz", "sim",
+            "-r",
+            "-v", "4",
+            world_path
+        ],
+        additional_env={
+            "GZ_SIM_SYSTEM_PLUGIN_PATH": [
+                plugin_path,
+                ":",
+                EnvironmentVariable("GZ_SIM_SYSTEM_PLUGIN_PATH", default_value="")
+            ]
+        },
+        output="screen"
     )
 
     clock_bridge = Node(
