@@ -6,7 +6,6 @@ import rclpy
 from rclpy.node import Node
 
 from std_msgs.msg import String
-from tf2_msgs.msg import TFMessage
 
 from ur5e_checkers_bringup.board import CheckersBoard
 
@@ -18,7 +17,7 @@ class CheckersGameNode(Node):
         # ---------------------------
         # Parameters
         # ---------------------------
-        self.declare_parameter("model_states_topic", "/world/checkers_world/pose")
+        self.declare_parameter("model_states_topic", "/checkers/piece_states")
         self.declare_parameter("board_state_topic", "/checkers/board_state")
         self.declare_parameter("legal_moves_topic", "/checkers/legal_moves")
 
@@ -73,9 +72,9 @@ class CheckersGameNode(Node):
         # Internal state
         # ---------------------------
         self.board = CheckersBoard()
-        self.board.turn = self.starting_turn
+        self.board.turn = "r" if self.starting_turn == "red" else "b"
 
-        self.latest_model_states: Optional[TFMessage] = None
+        self.latest_model_states: Optional[List[dict]] = None
         self.prev_board_signature: Optional[Tuple[Tuple[str, ...], ...]] = None
         self.have_seen_initial_board = False
 
@@ -83,7 +82,7 @@ class CheckersGameNode(Node):
         # ROS interfaces
         # ---------------------------
         self.model_states_sub = self.create_subscription(
-            TFMessage,
+            String,
             self.model_states_topic,
             self.model_states_callback,
             10,
@@ -118,8 +117,15 @@ class CheckersGameNode(Node):
     # ROS callbacks
     # ------------------------------------------------------------------
 
-    def model_states_callback(self, msg: TFMessage) -> None:
-        self.latest_model_states = msg
+    def model_states_callback(self, msg: String) -> None:
+        try:
+            data = json.loads(msg.data)
+            if isinstance(data, list):
+                self.latest_model_states = data
+            else:
+                self.get_logger().warning("Received piece_states payload that is not a list.")
+        except json.JSONDecodeError as e:
+            self.get_logger().warning(f"Failed to decode piece_states JSON: {e}")
 
     def update_from_sim(self) -> None:
         if self.latest_model_states is None:
@@ -160,17 +166,22 @@ class CheckersGameNode(Node):
     # Board reconstruction
     # ------------------------------------------------------------------
 
-    def build_board_from_model_states(self, msg: TFMessage) -> List[List[str]]:
+    def build_board_from_model_states(self, pieces: List[dict]) -> List[List[str]]:
         board = [["." for _ in range(8)] for _ in range(8)]
 
-        for transform in msg.transforms:
-            model_name = transform.child_frame_id
+        for piece in pieces:
+            try:
+                model_name = piece["name"]
+                position = piece["position"]
+                x = float(position["x"])
+                y = float(position["y"])
+            except (KeyError, TypeError, ValueError) as e:
+                self.get_logger().warning(f"Skipping malformed piece entry: {piece} ({e})")
+                continue
+
             piece_symbol = self.model_name_to_symbol(model_name)
             if piece_symbol is None:
                 continue
-
-            x = transform.transform.translation.x
-            y = transform.transform.translation.y
 
             row_col = self.world_to_square_majority(
                 x=x,
@@ -203,20 +214,12 @@ class CheckersGameNode(Node):
             board[row][col] = piece_symbol
 
         return board
-
+    
     def model_name_to_symbol(self, model_name: str) -> Optional[str]:
-        # Handle exact model names first.
         if model_name.startswith("red_checker_"):
             return "r"
         if model_name.startswith("black_checker_"):
             return "b"
-
-        # Handle possible scoped frame names from Gazebo / TF.
-        if "::red_checker_" in model_name or "red_checker_" in model_name:
-            return "r"
-        if "::black_checker_" in model_name or "black_checker_" in model_name:
-            return "b"
-
         return None
 
     def world_to_square_majority(
@@ -306,7 +309,8 @@ class CheckersGameNode(Node):
             ((from_row, from_col), (to_row, to_col))
         """
         try:
-            (from_row, from_col), (to_row, to_col) = move
+            from_row, from_col = move.bgn
+            to_row, to_col = move.dst
             return f"{from_row},{from_col} -> {to_row},{to_col}"
         except Exception:
             return str(move)
@@ -326,10 +330,10 @@ class CheckersGameNode(Node):
     # ------------------------------------------------------------------
 
     def flip_turn(self) -> None:
-        if self.board.turn == "red":
-            self.board.turn = "black"
+        if self.board.turn == "r":
+            self.board.turn = "b"
         else:
-            self.board.turn = "red"
+            self.board.turn = "r"
 
 
 def main(args=None) -> None:

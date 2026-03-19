@@ -1,7 +1,6 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, TimerAction, IncludeLaunchDescription
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, Command
-from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, TimerAction, SetEnvironmentVariable
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, Command, EnvironmentVariable
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
@@ -27,17 +26,39 @@ def generate_launch_description():
         " tf_prefix:="
     ])
 
-    gz = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathJoinSubstitution([
-                FindPackageShare("ros_gz_sim"),
-                "launch",
-                "gz_sim.launch.py"
-            ])
-        ),
-        launch_arguments={
-            "gz_args": ["-r -v4 ", world_path]
-        }.items()
+    # make sure Gazebo can find custom plugins
+    plugin_path = PathJoinSubstitution([
+        FindPackageShare("checkers_gz_plugins"),
+        "..",
+        "..",
+        "lib"
+    ])
+
+    set_plugin_path = SetEnvironmentVariable(
+        name="GZ_SIM_SYSTEM_PLUGIN_PATH",
+        value=[
+            plugin_path,
+            ":",
+            EnvironmentVariable("GZ_SIM_SYSTEM_PLUGIN_PATH", default_value="")
+        ]
+    )
+
+    # Launch Gazebo directly since this path worked in manual testing
+    gz = ExecuteProcess(
+        cmd=[
+            "gz", "sim",
+            "-r",
+            "-v", "4",
+            world_path
+        ],
+        additional_env={
+            "GZ_SIM_SYSTEM_PLUGIN_PATH": [
+                plugin_path,
+                ":",
+                EnvironmentVariable("GZ_SIM_SYSTEM_PLUGIN_PATH", default_value="")
+            ]
+        },
+        output="screen"
     )
 
     clock_bridge = Node(
@@ -51,7 +72,7 @@ def generate_launch_description():
         package="ros_gz_bridge",
         executable="parameter_bridge",
         arguments=[
-            "/world/checkers_world/pose@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V"
+            "/world/checkers_world/dynamic_pose/info@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V"
         ],
         output="screen",
     )
@@ -62,7 +83,7 @@ def generate_launch_description():
         output="screen",
         parameters=[
             {
-                "model_states_topic": "/world/checkers_world/pose",
+                "model_states_topic": "/world/checkers_world/dynamic_pose/info",
                 "update_hz": 5.0,
             }
         ],
@@ -191,6 +212,7 @@ def generate_launch_description():
             description="Spawn a simple static checkers board model"
         ),
 
+        set_plugin_path,
         gz,
         clock_bridge,
         pose_bridge,

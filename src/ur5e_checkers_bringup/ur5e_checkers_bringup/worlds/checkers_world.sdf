@@ -6,6 +6,21 @@
       <real_time_factor>1.0</real_time_factor>
     </physics>
 
+    <plugin
+      filename="gz-sim-physics-system"
+      name="gz::sim::systems::Physics">
+    </plugin>
+
+    <plugin
+      filename="gz-sim-user-commands-system"
+      name="gz::sim::systems::UserCommands">
+    </plugin>
+
+    <plugin
+      filename="gz-sim-scene-broadcaster-system"
+      name="gz::sim::systems::SceneBroadcaster">
+    </plugin>
+
     <include>
       <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Sun</uri>
     </include>
@@ -13,5 +28,10 @@
     <include>
       <uri>https://fuel.gazebosim.org/1.0/OpenRobotics/models/Ground%20Plane</uri>
     </include>
+
+    <plugin
+      filename="libcheckers_piece_state_plugin.so"
+      name="checkers_gz_plugins::CheckersPieceStatePlugin">
+    </plugin>
   </world>
 </sdf>

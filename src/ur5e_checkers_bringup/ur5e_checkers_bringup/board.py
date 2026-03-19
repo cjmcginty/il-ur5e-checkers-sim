@@ -30,17 +30,17 @@ class CheckersBoard:
     # place starting pieces on dark squares
     # dark squares are where row + col is odd
     def _setup(self) -> None:
-        # top 3 rows are black pieces
+        # top 3 rows are red pieces
         for r in range(3):
             for c in range(8):
                 if (r + c) % 2 == 1:
-                    self.board[r][c] = "b"
+                    self.board[r][c] = "r"
         
-        # bottom 3 rows are red pieces
+        # bottom 3 rows are black pieces
         for r in range(5, 8):
             for c in range(8):
                 if (r + c) % 2 == 1:
-                    self.board[r][c] = "r"
+                    self.board[r][c] = "b"
                     
     # return a deep copy of the board, will be useful later for search or RL
     def clone(self) -> "CheckersBoard":
@@ -71,7 +71,7 @@ class CheckersBoard:
     
     # return the allowed diagonal movement directions for a given player
     def _move_directions(self, player: str):
-        return [(-1, -1), (-1, 1)] if player == "r" else [(1, -1), (1, 1)]
+        return [(1, -1), (1, 1)] if player == "r" else [(-1, -1), (-1, 1)]
         
     # return all legal single-step moves from a source square
     def legal_moves_from(self, bgn: Coord) -> List[Move]:

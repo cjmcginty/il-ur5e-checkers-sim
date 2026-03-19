@@ -27,5 +27,6 @@ RUN pip3 install --break-system-packages --no-cache-dir \
 # Workspace
 WORKDIR /workspaces/ur5e-checkers-irl
 
-# Auto-source ROS
-RUN echo "source /opt/ros/jazzy/setup.bash" >> /etc/bash.bashrc
+# Auto-source ROS and the workspace overlay if it exists
+RUN echo "source /opt/ros/jazzy/setup.bash" >> /etc/bash.bashrc && \
+    echo '[ -f /workspaces/ur5e-checkers-irl/install/setup.bash ] && source /workspaces/ur5e-checkers-irl/install/setup.bash' >> /etc/bash.bashrc
