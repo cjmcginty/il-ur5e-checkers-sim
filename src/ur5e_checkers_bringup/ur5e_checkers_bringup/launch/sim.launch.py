@@ -115,6 +115,16 @@ def generate_launch_description():
         output="screen"
     )
 
+    set_start_pose = ExecuteProcess(
+        cmd=[
+            "ros2", "topic", "pub", "--once",
+            "/forward_position_controller/commands",
+            "std_msgs/msg/Float64MultiArray",
+            "{data: [0.0, -1.57, 1.57, -1.57, -1.57, 0.0]}"
+        ],
+        output="screen"
+    )
+
     board_spawn = ExecuteProcess(
         cmd=[
             "ros2", "run", "ros_gz_sim", "create",
@@ -184,6 +194,7 @@ def generate_launch_description():
                 )
                 black_count += 1
 
+
     return LaunchDescription([
         DeclareLaunchArgument(
             "spawn_board",
@@ -204,4 +215,5 @@ def generate_launch_description():
         TimerAction(period=5.0, actions=black_spawns),
         TimerAction(period=6.5, actions=[spawn_jsb]),
         TimerAction(period=7.5, actions=[spawn_traj]),
+        TimerAction(period=8.5, actions=[set_start_pose]),
     ])
