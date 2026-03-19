@@ -6,8 +6,6 @@ import rclpy
 from rclpy.node import Node
 
 from std_msgs.msg import String
-from tf2_msgs.msg import TFMessage
-from rclpy.qos import qos_profile_sensor_data
 
 from ur5e_checkers_bringup.board import CheckersBoard
 
@@ -19,7 +17,7 @@ class CheckersGameNode(Node):
         # ---------------------------
         # Parameters
         # ---------------------------
-        self.declare_parameter("model_states_topic", "/world/checkers_world/pose")
+        self.declare_parameter("model_states_topic", "/checkers/piece_states")
         self.declare_parameter("board_state_topic", "/checkers/board_state")
         self.declare_parameter("legal_moves_topic", "/checkers/legal_moves")
 
@@ -76,22 +74,18 @@ class CheckersGameNode(Node):
         self.board = CheckersBoard()
         self.board.turn = "r" if self.starting_turn == "red" else "b"
 
-        self.latest_model_states: Optional[TFMessage] = None
+        self.latest_model_states: Optional[List[dict]] = None
         self.prev_board_signature: Optional[Tuple[Tuple[str, ...], ...]] = None
         self.have_seen_initial_board = False
-
-        # Track piece identities even though the TF bridge gives empty child_frame_id.
-        self.tracked_red_positions: List[Tuple[float, float]] = []
-        self.tracked_black_positions: List[Tuple[float, float]] = []
 
         # ---------------------------
         # ROS interfaces
         # ---------------------------
         self.model_states_sub = self.create_subscription(
-            TFMessage,
+            String,
             self.model_states_topic,
             self.model_states_callback,
-            qos_profile_sensor_data,
+            10,
         )
 
         self.board_state_pub = self.create_publisher(
@@ -123,8 +117,15 @@ class CheckersGameNode(Node):
     # ROS callbacks
     # ------------------------------------------------------------------
 
-    def model_states_callback(self, msg: TFMessage) -> None:
-        self.latest_model_states = msg
+    def model_states_callback(self, msg: String) -> None:
+        try:
+            data = json.loads(msg.data)
+            if isinstance(data, list):
+                self.latest_model_states = data
+            else:
+                self.get_logger().warning("Received piece_states payload that is not a list.")
+        except json.JSONDecodeError as e:
+            self.get_logger().warning(f"Failed to decode piece_states JSON: {e}")
 
     def update_from_sim(self) -> None:
         if self.latest_model_states is None:
@@ -165,37 +166,33 @@ class CheckersGameNode(Node):
     # Board reconstruction
     # ------------------------------------------------------------------
 
-    def build_board_from_model_states(self, msg: TFMessage) -> List[List[str]]:
+    def build_board_from_model_states(self, pieces: List[dict]) -> List[List[str]]:
         board = [["." for _ in range(8)] for _ in range(8)]
 
-        # The TF bridge gives empty child_frame_id for this topic, so we identify
-        # checker pieces purely from their on-board positions and track color over time.
-        detections: List[Tuple[float, float]] = []
-
-        for transform in msg.transforms:
-            x = transform.transform.translation.x
-            y = transform.transform.translation.y
-            z = transform.transform.translation.z
-
-            if not self.is_likely_checker_piece(x, y, z):
+        for piece in pieces:
+            try:
+                model_name = piece["name"]
+                position = piece["position"]
+                x = float(position["x"])
+                y = float(position["y"])
+            except (KeyError, TypeError, ValueError) as e:
+                self.get_logger().warning(f"Skipping malformed piece entry: {piece} ({e})")
                 continue
 
-            detections.append((x, y))
+            piece_symbol = self.model_name_to_symbol(model_name)
+            if piece_symbol is None:
+                continue
 
-        if not detections:
-            return board
-
-        red_positions, black_positions = self.assign_piece_colors(detections)
-
-        for x, y in red_positions:
             row_col = self.world_to_square_majority(
                 x=x,
                 y=y,
                 piece_diameter=self.piece_diameter,
             )
+
             if row_col is None:
                 self.get_logger().warning(
-                    f"Red piece is off the board or could not be mapped from pose ({x:.3f}, {y:.3f})."
+                    f"Piece '{model_name}' is off the board or could not be mapped "
+                    f"from pose ({x:.3f}, {y:.3f})."
                 )
                 continue
 
@@ -203,116 +200,27 @@ class CheckersGameNode(Node):
 
             if board[row][col] != ".":
                 self.get_logger().warning(
-                    f"Square conflict at ({row}, {col}): red piece mapped onto an occupied square. "
+                    f"Square conflict at ({row}, {col}): "
+                    f"'{model_name}' mapped onto an occupied square. "
                     f"Keeping first piece '{board[row][col]}' and continuing."
                 )
                 continue
 
             if (row + col) % 2 == 0:
                 self.get_logger().warning(
-                    f"Red piece mapped to light square ({row}, {col}). Continuing anyway."
+                    f"Piece '{model_name}' mapped to light square ({row}, {col}). Continuing anyway."
                 )
 
-            board[row][col] = "r"
-
-        for x, y in black_positions:
-            row_col = self.world_to_square_majority(
-                x=x,
-                y=y,
-                piece_diameter=self.piece_diameter,
-            )
-            if row_col is None:
-                self.get_logger().warning(
-                    f"Black piece is off the board or could not be mapped from pose ({x:.3f}, {y:.3f})."
-                )
-                continue
-
-            row, col = row_col
-
-            if board[row][col] != ".":
-                self.get_logger().warning(
-                    f"Square conflict at ({row}, {col}): black piece mapped onto an occupied square. "
-                    f"Keeping first piece '{board[row][col]}' and continuing."
-                )
-                continue
-
-            if (row + col) % 2 == 0:
-                self.get_logger().warning(
-                    f"Black piece mapped to light square ({row}, {col}). Continuing anyway."
-                )
-
-            board[row][col] = "b"
+            board[row][col] = piece_symbol
 
         return board
-
-    def is_likely_checker_piece(self, x: float, y: float, z: float) -> bool:
-        # Keep only objects physically on the board footprint with checker-like height.
-        if (
-            x < self.board_min_x - self.square_size
-            or x > self.board_max_x + self.square_size
-            or y < self.board_min_y - self.square_size
-            or y > self.board_max_y + self.square_size
-        ):
-            return False
-
-        # Checker pieces in your sim are near z ~= 0.021. This excludes robot links / board.
-        if not (0.005 <= z <= 0.06):
-            return False
-
-        return True
-
-    def assign_piece_colors(
-        self, detections: List[Tuple[float, float]]
-    ) -> Tuple[List[Tuple[float, float]], List[Tuple[float, float]]]:
-        # First frame: infer color from starting side of board.
-        if not self.tracked_red_positions and not self.tracked_black_positions:
-            sorted_by_y = sorted(detections, key=lambda p: p[1], reverse=True)
-            self.tracked_red_positions = sorted_by_y[:12]
-            self.tracked_black_positions = sorted_by_y[12:24]
-            return self.tracked_red_positions, self.tracked_black_positions
-
-        # Later frames: preserve color by nearest-neighbor matching to previous positions.
-        red_positions = self.match_positions(self.tracked_red_positions, detections)
-        remaining = self.remove_matched(detections, red_positions)
-        black_positions = self.match_positions(self.tracked_black_positions, remaining)
-
-        self.tracked_red_positions = red_positions
-        self.tracked_black_positions = black_positions
-
-        return red_positions, black_positions
-
-    def match_positions(
-        self,
-        previous_positions: List[Tuple[float, float]],
-        detections: List[Tuple[float, float]],
-    ) -> List[Tuple[float, float]]:
-        remaining = list(detections)
-        matched: List[Tuple[float, float]] = []
-
-        for px, py in previous_positions:
-            if not remaining:
-                break
-
-            best_idx = min(
-                range(len(remaining)),
-                key=lambda i: math.hypot(remaining[i][0] - px, remaining[i][1] - py),
-            )
-            matched.append(remaining.pop(best_idx))
-
-        return matched
-
-    def remove_matched(
-        self,
-        detections: List[Tuple[float, float]],
-        matched: List[Tuple[float, float]],
-    ) -> List[Tuple[float, float]]:
-        remaining = list(detections)
-        for mx, my in matched:
-            for i, (x, y) in enumerate(remaining):
-                if math.isclose(x, mx, abs_tol=1e-9) and math.isclose(y, my, abs_tol=1e-9):
-                    remaining.pop(i)
-                    break
-        return remaining
+    
+    def model_name_to_symbol(self, model_name: str) -> Optional[str]:
+        if model_name.startswith("red_checker_"):
+            return "r"
+        if model_name.startswith("black_checker_"):
+            return "b"
+        return None
 
     def world_to_square_majority(
         self,
