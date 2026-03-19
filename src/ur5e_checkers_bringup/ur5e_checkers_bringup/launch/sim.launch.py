@@ -130,8 +130,18 @@ def generate_launch_description():
     spawn_traj = ExecuteProcess(
         cmd=[
             "ros2", "run", "controller_manager", "spawner",
-            "ur5e_arm_controller",
+            "forward_position_controller",
             "--controller-manager", "/controller_manager"
+        ],
+        output="screen"
+    )
+
+    set_start_pose = ExecuteProcess(
+        cmd=[
+            "ros2", "topic", "pub", "--once",
+            "/forward_position_controller/commands",
+            "std_msgs/msg/Float64MultiArray",
+            "{data: [0.0, -1.57, 1.57, -1.57, -1.57, 0.0]}"
         ],
         output="screen"
     )
@@ -205,6 +215,7 @@ def generate_launch_description():
                 )
                 black_count += 1
 
+
     return LaunchDescription([
         DeclareLaunchArgument(
             "spawn_board",
@@ -226,4 +237,5 @@ def generate_launch_description():
         TimerAction(period=5.0, actions=black_spawns),
         TimerAction(period=6.5, actions=[spawn_jsb]),
         TimerAction(period=7.5, actions=[spawn_traj]),
+        TimerAction(period=8.5, actions=[set_start_pose]),
     ])

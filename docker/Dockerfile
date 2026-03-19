@@ -10,13 +10,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-colcon-common-extensions python3-rosdep \
     nano less \
     ros-jazzy-ur-description \
-    ros-jazzy-ros-gz \
+    ros-jazzy-ur-moveit-config \
+    ros-jazzy-ur-robot-driver \
+    #ros-jazzy-ros-gz \
     ros-jazzy-ros-gz-sim \
     ros-jazzy-ros-gz-bridge \
     ros-jazzy-xacro \
     ros-jazzy-ros2-control \
     ros-jazzy-ros2-controllers \
     ros-jazzy-gz-ros2-control \
+    ros-jazzy-teleop-twist-keyboard \
+    #ros-jazzy-moveit \
+    ros-jazzy-moveit-servo \
+    #ros-jazzy-moveit-setup-assistant \
+    ros-jazzy-moveit-configs-utils \
  && rm -rf /var/lib/apt/lists/*
 
 # Python deps (ROS build helpers + ML) - install into system python so ros2 nodes can import them
