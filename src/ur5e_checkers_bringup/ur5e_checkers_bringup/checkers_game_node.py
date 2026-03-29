@@ -255,6 +255,10 @@ class CheckersGameNode(Node):
         return board
 
     def model_name_to_symbol(self, model_name: str) -> Optional[str]:
+        if model_name.startswith("red_king_"):
+            return "R"
+        if model_name.startswith("black_king_"):
+            return "B"
         if model_name.startswith("red_checker_"):
             return "r"
         if model_name.startswith("black_checker_"):
@@ -338,7 +342,15 @@ class CheckersGameNode(Node):
         new_board: List[List[str]],
     ) -> Optional[Move]:
         player = self.board.turn
-        opponent = "b" if player == "r" else "r"
+
+        if player == "r":
+            player_pieces_old = {"r", "R"}
+            player_pieces_new = {"r", "R"}
+            opponent_pieces = {"b", "B"}
+        else:
+            player_pieces_old = {"b", "B"}
+            player_pieces_new = {"b", "B"}
+            opponent_pieces = {"r", "R"}
 
         src = None
         dst = None
@@ -352,15 +364,16 @@ class CheckersGameNode(Node):
                 if old_cell == new_cell:
                     continue
 
-                if old_cell == player and new_cell == ".":
+                if old_cell in player_pieces_old and new_cell == ".":
                     if src is not None:
                         return None
                     src = (r, c)
-                elif old_cell == "." and new_cell == player:
+
+                elif old_cell == "." and new_cell in player_pieces_new:
                     if dst is not None:
                         return None
                     dst = (r, c)
-                elif old_cell == opponent and new_cell == ".":
+                elif old_cell in opponent_pieces and new_cell == ".":
                     removed_opponents += 1
                 else:
                     return None
@@ -369,6 +382,12 @@ class CheckersGameNode(Node):
             return None
 
         if removed_opponents > 1:
+            return None
+
+        if removed_opponents == 1 and abs(dst[0] - src[0]) != 2:
+            return None
+
+        if removed_opponents == 0 and abs(dst[0] - src[0]) != 1:
             return None
 
         return Move(src, dst)

@@ -22,8 +22,12 @@ class CheckersBoard:
         # create empty 8x8 board
         self.board: List[List[str]] = [["." for _ in range(8)] for _ in range(8)]
 
-        # red always moves first
+        # optional red always moves first
         self.turn: str = "r"
+
+        # captured counters
+        self.red_captured: int = 0
+        self.black_captured: int = 0
 
         # place starting pieces
         self._setup()
@@ -59,12 +63,24 @@ class CheckersBoard:
         r, c = pos
         self.board[r][c] = value
 
+    # piece ownership helpers (handles kings too)
+    def is_red_piece(self, piece: str) -> bool:
+        return piece in ("r", "R")
+    
+    def is_black_piece(self, piece: str) -> bool:
+        return piece in ("b", "B")
+    
+    def belongs_to_player(self, piece: str, player: str) -> bool:
+        if player == "r":
+            return self.is_red_piece(piece)
+        return self.is_black_piece(piece)
+
     # return a list the coordinates of all pieces belonging to the given player
     def all_pieces(self, player: str) -> List[Coord]:
         pieces = []
         for r in range(8):
             for c in range(8):
-                if self.board[r][c] == player:
+                if self.belongs_to_player(self.board[r][c], player):
                     pieces.append((r, c))
         return pieces
 
@@ -75,21 +91,31 @@ class CheckersBoard:
         return "b" if player == "r" else "r"
 
     # return the allowed diagonal movement directions for a given player
-    def _move_directions(self, player: str):
-        return [(1, -1), (1, 1)] if player == "r" else [(-1, -1), (-1, 1)]
+    def _move_directions_for_piece(self, piece: str):
+        if piece == "r":
+            return [(1, -1), (1, 1)]  # red moves down
+        if piece == "b":
+            return [(-1, -1), (-1, 1)]  # black moves up
+        if piece in ("R", "B"):  # kings move both directions
+            return [(1, -1), (1, 1), (-1, -1), (-1, 1)]
+        return []
+    
+    def move_is_capture(self, move: Move) -> bool:
+        return abs(move.dst[0] - move.bgn[0]) == 2
 
     # return all legal single-step moves from a source square
     def legal_moves_from(self, bgn: Coord) -> List[Move]:
         r, c = bgn
+        piece = self.piece_at(bgn)
 
         # makes sure u can only move your own piece
-        if self.piece_at(bgn) != self.turn:
-            return []
+        if not self.belongs_to_player(piece, self.turn):
+            return[]
 
         moves: List[Move] = []
 
-        # check both diagonal directions
-        for dr, dc in self._move_directions(self.turn):
+        # check diagonal directions
+        for dr, dc in self._move_directions_for_piece(piece):
             r2, c2 = r + dr, c + dc
 
             # stay inside board boundaries
@@ -103,23 +129,25 @@ class CheckersBoard:
     # return all legal capture moves from a source square
     def legal_captures_from(self, bgn: Coord) -> List[Move]:
         r, c = bgn
+        piece = self.piece_at(bgn)
 
         # makes sure u can only move your own piece
-        if self.piece_at(bgn) != self.turn:
+        if not self.belongs_to_player(piece, self.turn):
             return []
 
         moves: List[Move] = []
         opponent = self._opponent(self.turn)
 
         # check both diagonal directions
-        for dr, dc in self._move_directions(self.turn):
+        for dr, dc in self._move_directions_for_piece(piece):
             r1, c1 = r + dr, c + dc
             r2, c2 = r + 2 * dr, c + 2 * dc
 
             # stay inside board boundaries
             if 0 <= r2 < 8 and 0 <= c2 < 8:
                 # adjacent square must have opponent, landing square must be empty
-                if self.board[r1][c1] == opponent and self.board[r2][c2] == ".":
+                jumped_piece = self.board[r1][c1]
+                if self.board[r2][c2] == "." and self.belongs_to_player(jumped_piece, opponent):
                     moves.append(Move(bgn, (r2, c2)))
 
         return moves
@@ -136,6 +164,16 @@ class CheckersBoard:
 
         # if any capture exists, it must be taken
         return captures if captures else moves
+    
+    # check if pieces should be promototed to kings
+    def maybe_promote_to_king(self, pos: Coord) -> None:
+        piece = self.piece_at(pos)
+        r, _ = pos
+
+        if piece == "r" and r == 7:
+            self.set_piece(pos, "R")
+        elif piece == "b" and r == 0:
+            self.set_piece(pos, "B")
 
     # apply a move to the board and switch turns, raises error if move is illegal
     def apply_move(self, move: Move) -> None:
@@ -147,11 +185,28 @@ class CheckersBoard:
         self.set_piece(move.bgn, ".")
         self.set_piece(move.dst, piece)
 
+        # capture piece
+        was_capture = self.move_is_capture(move)
+
         # if this was a capture, remove the jumped piece
-        if abs(move.dst[0] - move.bgn[0]) == 2:
+        if was_capture:
             jumped_r = (move.bgn[0] + move.dst[0]) // 2
             jumped_c = (move.bgn[1] + move.dst[1]) // 2
+            jumped_piece = self.piece_at((jumped_r, jumped_c))
+
+            # add captured pieces to counter
+            if self.is_red_piece(jumped_piece):
+                self.red_captured += 1
+            elif self.is_black_piece(jumped_piece):
+                self.black_captured += 1
+
             self.set_piece((jumped_r, jumped_c), ".")
+        
+        # check if piece should be promoted to king
+        self.maybe_promote_to_king(move.dst)
+
+        if was_capture and self.legal_captures_from(move.dst):
+            return
 
         # switch turn
         self.turn = "b" if self.turn == "r" else "r"
