@@ -1,9 +1,65 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="ur5e">
 
-  <xacro:include filename="$(find ur_description)/urdf/ur.urdf.xacro"/>
+  <!-- =========================
+       Arguments
+       ========================= -->
+  <xacro:arg name="name" default="ur5e"/>
+  <xacro:arg name="ur_type" default="ur5e"/>
+  <xacro:arg name="tf_prefix" default=""/>
 
+  <!-- UR description parameters -->
+  <xacro:arg name="joint_limit_params"
+             default="$(find ur_description)/config/$(arg ur_type)/joint_limits.yaml"/>
+  <xacro:arg name="kinematics_params"
+             default="$(find ur_description)/config/$(arg ur_type)/default_kinematics.yaml"/>
+  <xacro:arg name="physical_params"
+             default="$(find ur_description)/config/$(arg ur_type)/physical_parameters.yaml"/>
+  <xacro:arg name="visual_params"
+             default="$(find ur_description)/config/$(arg ur_type)/visual_parameters.yaml"/>
 
+  <!-- Safety -->
+  <xacro:arg name="safety_limits" default="false"/>
+  <xacro:arg name="safety_pos_margin" default="0.15"/>
+  <xacro:arg name="safety_k_position" default="20"/>
+
+  <!-- Simulation / gripper -->
+  <xacro:arg name="use_fake_hardware" default="false"/>
+  <xacro:arg name="com_port" default="/dev/ttyUSB0"/>
+  <xacro:arg name="sim_gazebo" default="true"/>
+
+  <!-- =========================
+       Includes
+       ========================= -->
+  <xacro:include filename="$(find ur_description)/urdf/ur_macro.xacro"/>
+  <xacro:include filename="$(find ur5e_checkers_bringup)/urdf/robotiq_gripper_macro.xacro"/>
+
+  <!-- =========================
+       World link
+       ========================= -->
+  <link name="world"/>
+
+  <!-- =========================
+       UR5e arm geometry/joints
+       ========================= -->
+  <xacro:ur_robot
+      name="$(arg name)"
+      tf_prefix="$(arg tf_prefix)"
+      parent="world"
+      joint_limits_parameters_file="$(arg joint_limit_params)"
+      kinematics_parameters_file="$(arg kinematics_params)"
+      physical_parameters_file="$(arg physical_params)"
+      visual_parameters_file="$(arg visual_params)"
+      safety_limits="$(arg safety_limits)"
+      safety_pos_margin="$(arg safety_pos_margin)"
+      safety_k_position="$(arg safety_k_position)"
+      force_abs_paths="false">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </xacro:ur_robot>
+
+  <!-- =========================
+       Arm ros2_control
+       ========================= -->
   <ros2_control name="GazeboSystem" type="system">
     <hardware>
       <plugin>gz_ros2_control/GazeboSimSystem</plugin>
@@ -14,26 +70,31 @@
       <state_interface name="position"/>
       <state_interface name="velocity"/>
     </joint>
+
     <joint name="shoulder_lift_joint">
       <command_interface name="position"/>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
     </joint>
+
     <joint name="elbow_joint">
       <command_interface name="position"/>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
     </joint>
+
     <joint name="wrist_1_joint">
       <command_interface name="position"/>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
     </joint>
+
     <joint name="wrist_2_joint">
       <command_interface name="position"/>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
     </joint>
+
     <joint name="wrist_3_joint">
       <command_interface name="position"/>
       <state_interface name="position"/>
@@ -41,25 +102,28 @@
     </joint>
   </ros2_control>
 
-<!-- Gazebo Plugins -->
+  <!-- =========================
+       Gazebo plugin for ros2_control
+       ========================= -->
   <gazebo>
     <plugin
       filename="libgz_ros2_control-system.so"
       name="gz_ros2_control::GazeboSimROS2ControlPlugin">
-      <parameters>/workspaces/ur5e-checkers-irl/src/ur5e_checkers_bringup/ur5e_checkers_bringup/config/controllers_gripper.yaml</parameters>
+      <parameters>$(find ur5e_checkers_bringup)/config/controllers_gripper.yaml</parameters>
     </plugin>
   </gazebo>
 
-
-    <xacro:arg name="use_fake_hardware" default="false" />
-    <xacro:arg name="com_port" default="/dev/ttyUSB0" />
-    <xacro:arg name="sim_gazebo" default="true"/>
-
-<!-- Import macros -->
-    <xacro:include filename="$(find ur5e_checkers_bringup)/urdf/robotiq_gripper_macro.xacro" />
-
-    <xacro:robotiq_gripper name="RobotiqGripperHardwareInterface" prefix="" parent="tool0" use_fake_hardware="$(arg use_fake_hardware)" com_port="$(arg com_port)" sim_gazebo="$(arg sim_gazebo)">
-        <origin xyz="0 0 0" rpy="0 0 0" />
-    </xacro:robotiq_gripper>
+  <!-- =========================
+       Robotiq gripper
+       ========================= -->
+  <xacro:robotiq_gripper
+      name="RobotiqGripperHardwareInterface"
+      prefix=""
+      parent="tool0"
+      use_fake_hardware="$(arg use_fake_hardware)"
+      com_port="$(arg com_port)"
+      sim_gazebo="$(arg sim_gazebo)">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </xacro:robotiq_gripper>
 
 </robot>

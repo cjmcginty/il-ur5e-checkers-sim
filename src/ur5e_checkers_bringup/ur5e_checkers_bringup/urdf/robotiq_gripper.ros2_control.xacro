@@ -69,7 +69,7 @@
                     <param name="mimic">${prefix}robotiq_85_left_knuckle_joint</param>
                     <param name="multiplier">-1</param>
                     <xacro:unless value="${sim_ignition}">
-                        <command_interface name="position"/>
+                        <!-- <command_interface name="position"/> -->
                         <state_interface name="position"/>
                         <state_interface name="velocity"/>
                     </xacro:unless>
@@ -78,7 +78,7 @@
                     <param name="mimic">${prefix}robotiq_85_left_knuckle_joint</param>
                     <param name="multiplier">1</param>
                     <xacro:unless value="${sim_ignition}">
-                        <command_interface name="position"/>
+                        <!-- <command_interface name="position"/> -->
                         <state_interface name="position"/>
                         <state_interface name="velocity"/>
                     </xacro:unless>
@@ -87,7 +87,7 @@
                     <param name="mimic">${prefix}robotiq_85_left_knuckle_joint</param>
                     <param name="multiplier">-1</param>
                     <xacro:unless value="${sim_ignition}">
-                        <command_interface name="position"/>
+                        <!-- <command_interface name="position"/> -->
                         <state_interface name="position"/>
                         <state_interface name="velocity"/>
                     </xacro:unless>
@@ -96,7 +96,7 @@
                     <param name="mimic">${prefix}robotiq_85_left_knuckle_joint</param>
                     <param name="multiplier">-1</param>
                     <xacro:unless value="${sim_ignition}">
-                        <command_interface name="position"/>
+                        <!-- <command_interface name="position"/> -->
                         <state_interface name="position"/>
                         <state_interface name="velocity"/>
                     </xacro:unless>
@@ -105,7 +105,7 @@
                     <param name="mimic">${prefix}robotiq_85_left_knuckle_joint</param>
                     <param name="multiplier">1</param>
                     <xacro:unless value="${sim_ignition}">
-                        <command_interface name="position"/>
+                        <!-- <command_interface name="position"/> -->
                         <state_interface name="position"/>
                         <state_interface name="velocity"/>
                     </xacro:unless>

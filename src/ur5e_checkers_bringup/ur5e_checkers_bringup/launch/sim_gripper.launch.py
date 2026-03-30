@@ -48,14 +48,18 @@ def generate_launch_description():
         ".."
     ])
 
+    robotiq_resource_path = "/workspaces/ur5e-checkers-irl/install/robotiq_description/share"
+
     set_resource_path = SetEnvironmentVariable(
         name="GZ_SIM_RESOURCE_PATH",
         value=[
             resource_path,
             ":",
+            robotiq_resource_path,
+            ":",
             EnvironmentVariable("GZ_SIM_RESOURCE_PATH", default_value="")
         ]
-    )  
+    )
 
     # Launch Gazebo directly since this path worked in manual testing
     gz = ExecuteProcess(
