@@ -7,7 +7,7 @@ from rclpy.node import Node
 
 from std_msgs.msg import String
 
-from ur5e_checkers_bringup.board import CheckersBoard, Move
+from ur5e_checkers_bringup.board import CheckersBoard, Move, MoveSequence
 
 
 class CheckersGameNode(Node):
@@ -281,7 +281,6 @@ class CheckersGameNode(Node):
         piece_min_y = y - half
         piece_max_y = y + half
 
-        # Quick reject if no overlap with the board at all.
         if (
             piece_max_x < self.board_min_x
             or piece_min_x > self.board_max_x
@@ -340,57 +339,52 @@ class CheckersGameNode(Node):
         self,
         old_board: List[List[str]],
         new_board: List[List[str]],
-    ) -> Optional[Move]:
-        player = self.board.turn
+    ):
+        legal_moves = self.board.legal_moves()
 
-        if player == "r":
-            player_pieces_old = {"r", "R"}
-            player_pieces_new = {"r", "R"}
-            opponent_pieces = {"b", "B"}
-        else:
-            player_pieces_old = {"b", "B"}
-            player_pieces_new = {"b", "B"}
-            opponent_pieces = {"r", "R"}
+        self.get_logger().info(
+            f"Trying to match detected board change against {len(legal_moves)} legal move(s)."
+        )
 
-        src = None
-        dst = None
-        removed_opponents = 0
+        for move in legal_moves:
+            board_copy = self.board.clone()
+            move_str = self.move_to_string(move)
 
-        for r in range(8):
-            for c in range(8):
-                old_cell = old_board[r][c]
-                new_cell = new_board[r][c]
+            try:
+                board_copy.apply_move(move)
+            except ValueError as e:
+                self.get_logger().warning(
+                    f"Skipping legal-move candidate that failed during apply: {move_str} ({e})"
+                )
+                continue
 
-                if old_cell == new_cell:
-                    continue
+            candidate_signature = self.board_signature(board_copy.board)
+            new_signature = self.board_signature(new_board)
 
-                if old_cell in player_pieces_old and new_cell == ".":
-                    if src is not None:
-                        return None
-                    src = (r, c)
+            if candidate_signature == new_signature:
+                self.get_logger().info(f"Matched detected board change to move: {move_str}")
+                return move
 
-                elif old_cell == "." and new_cell in player_pieces_new:
-                    if dst is not None:
-                        return None
-                    dst = (r, c)
-                elif old_cell in opponent_pieces and new_cell == ".":
-                    removed_opponents += 1
-                else:
-                    return None
+            self.get_logger().debug(
+                f"Candidate did not match detected board: {move_str}"
+            )
 
-        if src is None or dst is None:
-            return None
+        self.get_logger().warning("No legal move matched the detected board change.")
+        self.get_logger().info("Detected board was:")
+        self.get_logger().info("\n" + self.format_board(new_board))
+        self.get_logger().info("Current internal board before sync was:")
+        self.get_logger().info("\n" + self.format_board(old_board))
 
-        if removed_opponents > 1:
-            return None
+        if legal_moves:
+            self.get_logger().info(
+                "Legal move candidates were: "
+                + json.dumps(
+                    [self.move_to_string(move) for move in legal_moves],
+                    ensure_ascii=True,
+                )
+            )
 
-        if removed_opponents == 1 and abs(dst[0] - src[0]) != 2:
-            return None
-
-        if removed_opponents == 0 and abs(dst[0] - src[0]) != 1:
-            return None
-
-        return Move(src, dst)
+        return None
 
     # ------------------------------------------------------------------
     # Formatting / publishing
@@ -404,6 +398,9 @@ class CheckersGameNode(Node):
 
     def move_to_string(self, move) -> str:
         try:
+            if isinstance(move, MoveSequence):
+                return " -> ".join(f"{r},{c}" for r, c in move.path)
+
             from_row, from_col = move.bgn
             to_row, to_col = move.dst
             return f"{from_row},{from_col} -> {to_row},{to_col}"
