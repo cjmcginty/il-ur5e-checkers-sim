@@ -20,6 +20,7 @@ class CheckersGameNode(Node):
         self.declare_parameter("model_states_topic", "/checkers/piece_states")
         self.declare_parameter("board_state_topic", "/checkers/board_state")
         self.declare_parameter("legal_moves_topic", "/checkers/legal_moves")
+        self.declare_parameter("game_event_topic", "/checkers/game_event")
 
         self.declare_parameter("update_hz", 5.0)
 
@@ -41,6 +42,9 @@ class CheckersGameNode(Node):
         )
         self.legal_moves_topic = (
             self.get_parameter("legal_moves_topic").get_parameter_value().string_value
+        )
+        self.game_event_topic = (
+            self.get_parameter("game_event_topic").get_parameter_value().string_value
         )
 
         self.update_hz = (
@@ -98,6 +102,11 @@ class CheckersGameNode(Node):
             self.legal_moves_topic,
             10,
         )
+        self.game_event_pub = self.create_publisher(
+            String,
+            self.game_event_topic,
+            10,
+        )
 
         timer_period = 1.0 / self.update_hz
         self.timer = self.create_timer(timer_period, self.update_from_sim)
@@ -106,6 +115,7 @@ class CheckersGameNode(Node):
         self.get_logger().info(f"Model states topic: {self.model_states_topic}")
         self.get_logger().info(f"Board state topic: {self.board_state_topic}")
         self.get_logger().info(f"Legal moves topic: {self.legal_moves_topic}")
+        self.get_logger().info(f"Game event topic: {self.game_event_topic}")
         self.get_logger().info(f"Update rate: {self.update_hz:.2f} Hz")
         self.get_logger().info(
             f"Board geometry: center=({self.board_center_x:.3f}, {self.board_center_y:.3f}), "
@@ -132,6 +142,7 @@ class CheckersGameNode(Node):
             return
 
         detected_board = self.build_board_from_model_states(self.latest_model_states)
+        detected_board = self.merge_detected_board_with_internal_kings(detected_board)
         detected_signature = self.board_signature(detected_board)
 
         if detected_signature == self.prev_board_signature:
@@ -164,22 +175,37 @@ class CheckersGameNode(Node):
 
         if inferred_move is not None and inferred_move in self.board.legal_moves():
             try:
+                was_capture = self.board.move_is_capture(inferred_move)
                 self.board.apply_move(inferred_move)
                 self.get_logger().info(
                     f"Applied detected move: {self.move_to_string(inferred_move)}"
                 )
+
+                if was_capture:
+                    self.publish_capture_event(inferred_move)
             except ValueError as e:
                 self.get_logger().warning(
                     f"Failed to apply inferred move {self.move_to_string(inferred_move)}: {e}"
                 )
-                self.board.board = detected_board
+                self.board.board = self.merge_detected_board_with_internal_kings(detected_board)
                 self.flip_turn()
         else:
+            partial_capture = self.board_matches_capture_removal_only(
+                self.board.board,
+                detected_board,
+            )
+
+            if partial_capture is not None:
+                self.get_logger().info(
+                    "Detected intermediate capture state; waiting for mover to finish."
+                )
+                return
+
             self.get_logger().warning(
                 "Could not match detected board change to a legal move. "
                 "Syncing board directly from simulation."
             )
-            self.board.board = detected_board
+            self.board.board = self.merge_detected_board_with_internal_kings(detected_board)
 
         self.prev_board_signature = self.board_signature(self.board.board)
 
@@ -217,7 +243,7 @@ class CheckersGameNode(Node):
                 self.get_logger().warning(f"Skipping malformed piece entry: {piece} ({e})")
                 continue
 
-            piece_symbol = self.model_name_to_symbol(model_name)
+            piece_symbol = self.piece_entry_to_symbol(piece)
             if piece_symbol is None:
                 continue
 
@@ -253,6 +279,28 @@ class CheckersGameNode(Node):
 
         return board
 
+    def piece_entry_to_symbol(self, piece: dict) -> Optional[str]:
+        try:
+            model_name = piece["name"]
+        except KeyError:
+            return None
+
+        is_king = piece.get("is_king", None)
+
+        if model_name.startswith("red_"):
+            if is_king is True:
+                return "R"
+            if is_king is False:
+                return "r"
+
+        if model_name.startswith("black_"):
+            if is_king is True:
+                return "B"
+            if is_king is False:
+                return "b"
+
+        return self.model_name_to_symbol(model_name)
+
     def model_name_to_symbol(self, model_name: str) -> Optional[str]:
         if model_name.startswith("red_king_"):
             return "R"
@@ -263,6 +311,24 @@ class CheckersGameNode(Node):
         if model_name.startswith("black_checker_"):
             return "b"
         return None
+
+    def merge_detected_board_with_internal_kings(
+        self,
+        detected_board: List[List[str]],
+    ) -> List[List[str]]:
+        merged_board = [row[:] for row in detected_board]
+
+        for row in range(8):
+            for col in range(8):
+                detected_piece = detected_board[row][col]
+                internal_piece = self.board.board[row][col]
+
+                if detected_piece == "r" and internal_piece == "R":
+                    merged_board[row][col] = "R"
+                elif detected_piece == "b" and internal_piece == "B":
+                    merged_board[row][col] = "B"
+
+        return merged_board
 
     def world_to_square_majority(
         self,
@@ -385,6 +451,42 @@ class CheckersGameNode(Node):
 
         return None
 
+    def board_matches_capture_removal_only(
+        self,
+        old_board: List[List[str]],
+        new_board: List[List[str]],
+    ):
+        legal_moves = self.board.legal_moves()
+
+        for move in legal_moves:
+            if not self.board.move_is_capture(move):
+                continue
+
+            if isinstance(move, MoveSequence):
+                path = move.path
+            else:
+                path = (move.bgn, move.dst)
+
+            if len(path) != 2:
+                continue
+
+            r1, c1 = path[0]
+            r2, c2 = path[1]
+
+            if abs(r2 - r1) != 2 or abs(c2 - c1) != 2:
+                continue
+
+            jumped_r = (r1 + r2) // 2
+            jumped_c = (c1 + c2) // 2
+
+            expected = [row[:] for row in old_board]
+            expected[jumped_r][jumped_c] = "."
+
+            if self.board_signature(expected) == self.board_signature(new_board):
+                return move
+
+        return None
+
     # ------------------------------------------------------------------
     # Formatting / publishing
     # ------------------------------------------------------------------
@@ -392,8 +494,34 @@ class CheckersGameNode(Node):
     def board_signature(self, board: List[List[str]]) -> Tuple[Tuple[str, ...], ...]:
         return tuple(tuple(cell for cell in row) for row in board)
 
-    def format_board(self, board: List[List[str]]) -> str:
+    def format_board_grid(self, board: List[List[str]]) -> str:
         return "\n".join(" ".join(row) for row in board)
+
+    def captured_counts_from_board(self, board: List[List[str]]) -> Tuple[int, int]:
+        red_remaining = sum(1 for row in board for cell in row if cell in ("r", "R"))
+        black_remaining = sum(1 for row in board for cell in row if cell in ("b", "B"))
+
+        red_captured_by_black = 12 - red_remaining
+        black_captured_by_red = 12 - black_remaining
+
+        return red_captured_by_black, black_captured_by_red
+
+    def king_counts_from_board(self, board: List[List[str]]) -> Tuple[int, int]:
+        red_kings = sum(1 for row in board for cell in row if cell == "R")
+        black_kings = sum(1 for row in board for cell in row if cell == "B")
+        return red_kings, black_kings
+
+    def format_board(self, board: List[List[str]]) -> str:
+        board_grid = self.format_board_grid(board)
+        red_captured_by_black, black_captured_by_red = self.captured_counts_from_board(board)
+        red_kings, black_kings = self.king_counts_from_board(board)
+
+        return (
+            board_grid
+            + "\n"
+            + f"red_kings={red_kings} black_kings={black_kings}\n"
+            + f"captured_red={red_captured_by_black} captured_black={black_captured_by_red}"
+        )
 
     def move_to_string(self, move) -> str:
         try:
@@ -415,6 +543,40 @@ class CheckersGameNode(Node):
         msg = String()
         msg.data = json.dumps(legal_move_strings, ensure_ascii=True)
         self.legal_moves_pub.publish(msg)
+
+    def publish_game_event(self, event: dict) -> None:
+        msg = String()
+        msg.data = json.dumps(event, ensure_ascii=True)
+        self.game_event_pub.publish(msg)
+
+    def publish_capture_event(self, move) -> None:
+        if isinstance(move, MoveSequence):
+            path = move.path
+        else:
+            path = (move.bgn, move.dst)
+
+        mover = self.board.turn
+        captured_squares = []
+
+        for i in range(len(path) - 1):
+            r1, c1 = path[i]
+            r2, c2 = path[i + 1]
+
+            if abs(r2 - r1) == 2 and abs(c2 - c1) == 2:
+                captured_squares.append([(r1 + r2) // 2, (c1 + c2) // 2])
+
+        if not captured_squares:
+            return
+
+        event = {
+            "type": "capture",
+            "by": mover,
+            "from": list(path[0]),
+            "to": list(path[-1]),
+            "captured": captured_squares,
+            "path": [list(p) for p in path],
+        }
+        self.publish_game_event(event)
 
     # ------------------------------------------------------------------
     # Turn handling
