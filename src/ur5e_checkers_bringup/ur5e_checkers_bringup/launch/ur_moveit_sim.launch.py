@@ -150,7 +150,7 @@ def generate_launch_description():
         ],
     )
 
-    servo_yaml = load_yaml("ur_moveit_config", "config/ur_servo.yaml")
+    servo_yaml = load_yaml("ur5e_checkers_bringup", "config/ur_servo.yaml")
     servo_params = {"moveit_servo": servo_yaml}
     servo_node = Node(
         package="moveit_servo",
@@ -219,5 +219,7 @@ def generate_launch_description():
             )
         ),
     )
+
+    ld.add_action(set_servo_twist_mode)
 
     return ld
