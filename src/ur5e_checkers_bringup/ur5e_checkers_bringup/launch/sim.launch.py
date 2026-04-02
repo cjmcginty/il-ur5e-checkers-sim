@@ -89,6 +89,23 @@ def generate_launch_description():
         ],
     )
 
+    piece_manager_node = Node(
+        package="ur5e_checkers_bringup",
+        executable="checkers_piece_manager",
+        output="screen",
+        parameters=[
+            {
+                "piece_states_topic": "/checkers/piece_states",
+                "game_event_topic": "/checkers/game_event",
+                "world_name": "checkers_world",
+                "board_center_x": 0.6,
+                "board_center_y": 0.0,
+                "board_size": 0.40,
+                "piece_z": 0.03,
+            }
+        ],
+    )
+
     rsp = Node(
         package="robot_state_publisher",
         executable="robot_state_publisher",
@@ -228,6 +245,7 @@ def generate_launch_description():
         clock_bridge,
         pose_bridge,
         checkers_node,
+        piece_manager_node,
         rsp,
         static_tf,
 

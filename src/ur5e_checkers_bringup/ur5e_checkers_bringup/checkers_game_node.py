@@ -176,10 +176,22 @@ class CheckersGameNode(Node):
         if inferred_move is not None and inferred_move in self.board.legal_moves():
             try:
                 was_capture = self.board.move_is_capture(inferred_move)
+                old_board = [row[:] for row in self.board.board]
                 self.board.apply_move(inferred_move)
                 self.get_logger().info(
                     f"Applied detected move: {self.move_to_string(inferred_move)}"
                 )
+
+                for row in range(8):
+                    for col in range(8):
+                        if old_board[row][col] == "r" and self.board.board[row][col] == "R":
+                            self.publish_game_event(
+                                {"type": "promote", "color": "red", "row": row, "col": col}
+                            )
+                        elif old_board[row][col] == "b" and self.board.board[row][col] == "B":
+                            self.publish_game_event(
+                                {"type": "promote", "color": "black", "row": row, "col": col}
+                            )
 
                 if was_capture:
                     self.publish_capture_event(inferred_move)
@@ -336,10 +348,6 @@ class CheckersGameNode(Node):
         y: float,
         piece_diameter: float,
     ) -> Optional[Tuple[int, int]]:
-        """
-        Assign a piece to the square containing the majority of its XY footprint.
-        We approximate the checker footprint as an axis-aligned square centered at (x, y).
-        """
         half = piece_diameter / 2.0
         piece_min_x = x - half
         piece_max_x = x + half
