@@ -83,6 +83,51 @@ class CheckersPieceManager(Node):
         if not isinstance(event, dict):
             return
 
+        if event.get("type") == "capture":
+            if self.latest_model_states is None:
+                self.get_logger().warning("No piece states available yet.")
+                return
+
+            captured = event.get("captured")
+            by = event.get("by")
+
+            if not isinstance(captured, list):
+                return
+            if by not in ("r", "b"):
+                return
+
+            captured_color = "black" if by == "r" else "red"
+
+            for square in captured:
+                if (
+                    not isinstance(square, list)
+                    or len(square) != 2
+                    or not isinstance(square[0], int)
+                    or not isinstance(square[1], int)
+                ):
+                    continue
+
+                row, col = square
+
+                piece = self.find_piece_at_square(row, col, captured_color)
+                if piece is None:
+                    self.get_logger().warning(
+                        f"Could not find captured {captured_color} piece at ({row}, {col})."
+                    )
+                    continue
+
+                piece_name = piece["name"]
+
+                if not self.delete_entity(piece_name):
+                    self.get_logger().warning(f"Failed to delete captured piece {piece_name}")
+                    continue
+
+                self.get_logger().info(
+                    f"Removed captured piece {piece_name} at ({row}, {col})"
+                )
+
+            return
+
         if event.get("type") != "promote":
             return
 

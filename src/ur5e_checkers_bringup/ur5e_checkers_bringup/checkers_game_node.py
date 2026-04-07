@@ -176,6 +176,7 @@ class CheckersGameNode(Node):
         if inferred_move is not None and inferred_move in self.board.legal_moves():
             try:
                 was_capture = self.board.move_is_capture(inferred_move)
+                capturing_player = self.board.turn
                 old_board = [row[:] for row in self.board.board]
                 self.board.apply_move(inferred_move)
                 self.get_logger().info(
@@ -194,7 +195,7 @@ class CheckersGameNode(Node):
                             )
 
                 if was_capture:
-                    self.publish_capture_event(inferred_move)
+                    self.publish_capture_event(inferred_move, capturing_player)
             except ValueError as e:
                 self.get_logger().warning(
                     f"Failed to apply inferred move {self.move_to_string(inferred_move)}: {e}"
@@ -557,13 +558,12 @@ class CheckersGameNode(Node):
         msg.data = json.dumps(event, ensure_ascii=True)
         self.game_event_pub.publish(msg)
 
-    def publish_capture_event(self, move) -> None:
+    def publish_capture_event(self, move, mover: str) -> None:
         if isinstance(move, MoveSequence):
             path = move.path
         else:
             path = (move.bgn, move.dst)
 
-        mover = self.board.turn
         captured_squares = []
 
         for i in range(len(path) - 1):
