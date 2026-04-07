@@ -49,6 +49,7 @@ setup(
         'console_scripts': [
             'checkers_game_node = ur5e_checkers_bringup.checkers_game_node:main',
             'test_checkers = ur5e_checkers_bringup.test_checkers:main',
+            "checkers_piece_manager = ur5e_checkers_bringup.checkers_piece_manager:main",
         ],
     },
 )
