@@ -11,7 +11,6 @@ import torch.optim as optim
 
 from ur5e_checkers_bringup.board import CheckersBoard
 from ur5e_checkers_bringup.dqn_action_space import (
-    index_to_action_key,
     legal_action_indices,
     move_to_action_index,
     num_actions,
@@ -20,7 +19,6 @@ from ur5e_checkers_bringup.dqn_model import DQN
 from ur5e_checkers_bringup.dqn_utils import (
     encode_board,
     epsilon_greedy_index,
-    key_to_move,
     reward_for_move,
 )
 
@@ -97,26 +95,37 @@ def apply_move(board: CheckersBoard, action_index: int) -> CheckersBoard:
     """
     Applies the chosen action to a copy of the board and returns the new board.
 
-    Assumes board.py supports one of:
-      - board.push(move)
-      - board.apply_move(move)
-      - board.make_move(move)
     """
     next_board = clone_board(board)
 
-    action_key = index_to_action_key(action_index)
-    move = key_to_move(action_key)
+    legal_moves = next_board.legal_moves()
+
+    matched_move = None
+    for move in legal_moves:
+        try:
+            idx = move_to_action_index(move)
+        except ValueError:
+            continue
+
+        if idx == action_index:
+            matched_move = move
+            break
+
+    if matched_move is None:
+        raise ValueError(
+            f"Chosen action index {action_index} did not match any current legal move"
+        )
 
     if hasattr(next_board, "push") and callable(next_board.push):
-        next_board.push(move)
+        next_board.push(matched_move)
         return next_board
 
     if hasattr(next_board, "apply_move") and callable(next_board.apply_move):
-        next_board.apply_move(move)
+        next_board.apply_move(matched_move)
         return next_board
 
     if hasattr(next_board, "make_move") and callable(next_board.make_move):
-        next_board.make_move(move)
+        next_board.make_move(matched_move)
         return next_board
 
     raise AttributeError(
