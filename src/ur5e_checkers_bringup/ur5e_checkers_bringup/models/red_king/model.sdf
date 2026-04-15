@@ -1,0 +1,60 @@
+<?xml version="1.0" ?>
+<sdf version="1.7">
+  <model name="red_king">
+    <static>false</static>
+
+    <link name="piece_link">
+      <inertial>
+        <mass>0.04</mass>
+        <inertia>
+          <ixx>4e-6</ixx>
+          <iyy>4e-6</iyy>
+          <izz>4e-6</izz>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+
+      <collision name="collision">
+        <pose>0 0 0.010 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.016</radius>
+            <length>0.020</length>
+          </cylinder>
+        </geometry>
+      </collision>
+
+      <visual name="bottom_piece">
+        <pose>0 0 0.005 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.016</radius>
+            <length>0.010</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.35 0.08 0.08 1</ambient>
+          <diffuse>0.45 0.10 0.10 1</diffuse>
+          <specular>0.05 0.05 0.05 1</specular>
+        </material>
+      </visual>
+
+      <visual name="top_piece">
+        <pose>0 0 0.015 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.016</radius>
+            <length>0.010</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.35 0.08 0.08 1</ambient>
+          <diffuse>0.45 0.10 0.10 1</diffuse>
+          <specular>0.05 0.05 0.05 1</specular>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>

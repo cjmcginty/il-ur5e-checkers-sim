@@ -69,8 +69,14 @@ public:
         {
           const std::string &name = _name->Data();
 
-          const bool is_red = name.rfind("red_checker_", 0) == 0;
-          const bool is_black = name.rfind("black_checker_", 0) == 0;
+          const bool is_red_checker = name.rfind("red_checker_", 0) == 0;
+          const bool is_black_checker = name.rfind("black_checker_", 0) == 0;
+          const bool is_red_king = name.rfind("red_king_", 0) == 0;
+          const bool is_black_king = name.rfind("black_king_", 0) == 0;
+
+          const bool is_red = is_red_checker || is_red_king;
+          const bool is_black = is_black_checker || is_black_king;
+          const bool is_king = is_red_king || is_black_king;
 
           if (!is_red && !is_black)
             return true;
@@ -86,7 +92,8 @@ public:
                << "\"x\":" << pose.Pos().X() << ","
                << "\"y\":" << pose.Pos().Y() << ","
                << "\"z\":" << pose.Pos().Z()
-               << "}"
+               << "},"
+               << "\"is_king\":" << (is_king ? "true" : "false")
                << "}";
 
           first = false;
