@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-full python3-venv python3-pip \
     python3-colcon-common-extensions python3-rosdep \
     nano less \
+    sudo \
     ros-jazzy-ur-description \
     ros-jazzy-ur-moveit-config \
     ros-jazzy-ur-robot-driver \
@@ -24,12 +25,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-jazzy-moveit-servo \
     #ros-jazzy-moveit-setup-assistant \
     ros-jazzy-moveit-configs-utils \
+ && echo "ubuntu ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
  && rm -rf /var/lib/apt/lists/*
+
+RUN echo "root ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 # Python deps (ROS build helpers + ML) - install into system python so ros2 nodes can import them
 RUN pip3 install --break-system-packages --no-cache-dir \
       catkin_pkg empy lark-parser pytest \
       numpy torch torchvision torchaudio
+      
 
 # Workspace
 WORKDIR /workspaces/ur5e-checkers-irl
