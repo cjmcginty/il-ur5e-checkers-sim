@@ -219,6 +219,7 @@ class CheckersGameNode(Node):
                 "Syncing board directly from simulation."
             )
             self.board.board = self.merge_detected_board_with_internal_kings(detected_board)
+            self.flip_turn()
 
         self.prev_board_signature = self.board_signature(self.board.board)
 
