@@ -82,6 +82,10 @@ class CheckersGameNode(Node):
         self.prev_board_signature: Optional[Tuple[Tuple[str, ...], ...]] = None
         self.have_seen_initial_board = False
 
+        # Squares of pieces that have already been captured in software
+        # but may still physically appear in the simulation for a short time.
+        self.pending_removed_squares: List[Tuple[int, int]] = []
+
         # ---------------------------
         # ROS interfaces
         # ---------------------------
@@ -141,12 +145,42 @@ class CheckersGameNode(Node):
         if self.latest_model_states is None:
             return
 
-        detected_board = self.build_board_from_model_states(self.latest_model_states)
-        detected_board = self.merge_detected_board_with_internal_kings(detected_board)
+        raw_detected_board = self.build_board_from_model_states(self.latest_model_states)
+        raw_detected_board = self.merge_detected_board_with_internal_kings(raw_detected_board)
+
+        # Ignore any pieces that have already been captured in software
+        # but may still still be visible physically.
+        detected_board = self.apply_pending_removals(raw_detected_board)
+
         detected_signature = self.board_signature(detected_board)
 
-        if detected_signature == self.prev_board_signature:
+        # Remove squares from pending cleanup once they are actually empty
+        # in the raw detected board from simulation.
+        still_pending = []
+        for row, col in self.pending_removed_squares:
+            if raw_detected_board[row][col] != ".":
+                still_pending.append((row, col))
+        self.pending_removed_squares = still_pending
+        
+        # Detect whether pending cleanup changed
+        previous_pending = set(self.pending_removed_squares)
+
+        # Remove squares from pending cleanup once they are actually empty
+        still_pending = []
+        for row, col in self.pending_removed_squares:
+            if raw_detected_board[row][col] != ".":
+                still_pending.append((row, col))
+
+        self.pending_removed_squares = still_pending
+
+        pending_changed = set(previous_pending) != set(self.pending_removed_squares)
+
+        # Only skip update if BOTH:
+        # - board hasn't changed
+        # - and no cleanup just completed
+        if detected_signature == self.prev_board_signature and not pending_changed:
             return
+        
 
         if not self.have_seen_initial_board:
             self.board.board = detected_board
@@ -178,6 +212,7 @@ class CheckersGameNode(Node):
                 was_capture = self.board.move_is_capture(inferred_move)
                 capturing_player = self.board.turn
                 old_board = [row[:] for row in self.board.board]
+
                 self.board.apply_move(inferred_move)
                 self.get_logger().info(
                     f"Applied detected move: {self.move_to_string(inferred_move)}"
@@ -195,7 +230,10 @@ class CheckersGameNode(Node):
                             )
 
                 if was_capture:
+                    captured_squares = self.get_captured_squares(inferred_move)
+                    self.add_pending_removed_squares(captured_squares)
                     self.publish_capture_event(inferred_move, capturing_player)
+
             except ValueError as e:
                 self.get_logger().warning(
                     f"Failed to apply inferred move {self.move_to_string(inferred_move)}: {e}"
@@ -203,15 +241,49 @@ class CheckersGameNode(Node):
                 self.board.board = self.merge_detected_board_with_internal_kings(detected_board)
                 self.flip_turn()
         else:
-            partial_capture = self.board_matches_capture_removal_only(
+            partial_capture_move = self.board_matches_capture_move_only(
                 self.board.board,
                 detected_board,
             )
 
-            if partial_capture is not None:
+            if partial_capture_move is not None:
                 self.get_logger().info(
-                    "Detected intermediate capture state; waiting for mover to finish."
+                    "Detected capture move before piece removal; committing capture in software."
                 )
+
+                try:
+                    capturing_player = self.board.turn
+                    old_board = [row[:] for row in self.board.board]
+                    self.board.apply_move(partial_capture_move)
+
+                    captured_squares = self.get_captured_squares(partial_capture_move)
+                    self.add_pending_removed_squares(captured_squares)
+                    self.publish_capture_event(partial_capture_move, capturing_player)
+
+                    for row in range(8):
+                        for col in range(8):
+                            if old_board[row][col] == "r" and self.board.board[row][col] == "R":
+                                self.publish_game_event(
+                                    {"type": "promote", "color": "red", "row": row, "col": col}
+                                )
+                            elif old_board[row][col] == "b" and self.board.board[row][col] == "B":
+                                self.publish_game_event(
+                                    {"type": "promote", "color": "black", "row": row, "col": col}
+                                )
+
+                except ValueError as e:
+                    self.get_logger().warning(
+                        f"Failed to apply intermediate capture move "
+                        f"{self.move_to_string(partial_capture_move)}: {e}"
+                    )
+                self.prev_board_signature = self.board_signature(self.board.board)
+
+                board_text = self.format_board(self.board.board)
+                legal_moves = self.board.legal_moves()
+                legal_move_strings = [self.move_to_string(move) for move in legal_moves]
+
+                self.publish_board_state(board_text)
+                self.publish_legal_moves(legal_move_strings)
                 return
 
             self.get_logger().warning(
@@ -220,6 +292,7 @@ class CheckersGameNode(Node):
             )
             self.board.board = self.merge_detected_board_with_internal_kings(detected_board)
             self.flip_turn()
+
 
         self.prev_board_signature = self.board_signature(self.board.board)
 
@@ -565,14 +638,7 @@ class CheckersGameNode(Node):
         else:
             path = (move.bgn, move.dst)
 
-        captured_squares = []
-
-        for i in range(len(path) - 1):
-            r1, c1 = path[i]
-            r2, c2 = path[i + 1]
-
-            if abs(r2 - r1) == 2 and abs(c2 - c1) == 2:
-                captured_squares.append([(r1 + r2) // 2, (c1 + c2) // 2])
+        captured_squares = self.get_captured_squares(move)
 
         if not captured_squares:
             return
@@ -582,7 +648,7 @@ class CheckersGameNode(Node):
             "by": mover,
             "from": list(path[0]),
             "to": list(path[-1]),
-            "captured": captured_squares,
+            "captured": [list(pos) for pos in captured_squares],
             "path": [list(p) for p in path],
         }
         self.publish_game_event(event)
@@ -596,6 +662,79 @@ class CheckersGameNode(Node):
             self.board.turn = "b"
         else:
             self.board.turn = "r"
+
+
+
+    def apply_pending_removals(
+        self,
+        board: List[List[str]],
+    ) -> List[List[str]]:
+        adjusted = [row[:] for row in board]
+
+        for row, col in self.pending_removed_squares:
+            adjusted[row][col] = "."
+
+        return adjusted
+    
+    def get_captured_squares(self, move) -> List[Tuple[int, int]]:
+        if isinstance(move, MoveSequence):
+            path = move.path
+        else:
+            path = (move.bgn, move.dst)
+
+        captured_squares = []
+
+        for i in range(len(path) - 1):
+            r1, c1 = path[i]
+            r2, c2 = path[i + 1]
+
+            if abs(r2 - r1) == 2 and abs(c2 - c1) == 2:
+                captured_squares.append(((r1 + r2) // 2, (c1 + c2) // 2))
+
+        return captured_squares
+    
+    def board_matches_capture_move_only(
+        self,
+        old_board: List[List[str]],
+        new_board: List[List[str]],
+    ):
+        legal_moves = self.board.legal_moves()
+
+        for move in legal_moves:
+            if not self.board.move_is_capture(move):
+                continue
+
+            if isinstance(move, MoveSequence):
+                path = move.path
+            else:
+                path = (move.bgn, move.dst)
+
+            # First pass: only handle simple single-jump captures
+            if len(path) != 2:
+                continue
+
+            r1, c1 = path[0]
+            r2, c2 = path[1]
+
+            if abs(r2 - r1) != 2 or abs(c2 - c1) != 2:
+                continue
+
+            expected = [row[:] for row in old_board]
+
+            moving_piece = expected[r1][c1]
+            expected[r1][c1] = "."
+            expected[r2][c2] = moving_piece
+            # Important: jumped piece stays in place for this intermediate state
+
+            if self.board_signature(expected) == self.board_signature(new_board):
+                return move
+
+        return None
+    
+    def add_pending_removed_squares(self, squares: List[Tuple[int, int]]) -> None:
+        for square in squares:
+            if square not in self.pending_removed_squares:
+                self.pending_removed_squares.append(square)
 
 
 def main(args=None) -> None:
