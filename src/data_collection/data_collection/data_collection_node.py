@@ -124,6 +124,10 @@ class DataCollectionNode(Node):
         if not msg.data:
             return
 
+        action = self.extract_action(msg)
+        if action is None:
+            return
+
         t = self.get_clock().now().nanoseconds * 1e-9
         self.latest_action = action
         self.latest_action_time = t
