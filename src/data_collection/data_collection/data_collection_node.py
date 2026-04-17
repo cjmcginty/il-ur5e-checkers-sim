@@ -16,6 +16,7 @@ from sensor_msgs.msg import JointState
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Float32, Float64MultiArray
 from std_srvs.srv import Trigger
+from std_msgs.msg import Float64MultiArray
 
 import tf2_ros
 
@@ -73,7 +74,7 @@ class DataCollectionNode(Node):
         self.create_subscription(
             Float64MultiArray,
             self.cmd_topic,
-            self.joint_cmd_callback,
+            self.forward_position_cmd_callback,
             50
         )
         
@@ -119,12 +120,8 @@ class DataCollectionNode(Node):
     def gripper_state_callback(self, msg):
         self.latest_gripper_state = msg.data
         
-    def joint_cmd_callback(self, msg):
+    def forward_position_cmd_callback(self, msg):
         if not msg.data:
-            return
-
-        action = self.extract_action(msg.data)
-        if action is None:
             return
 
         t = self.get_clock().now().nanoseconds * 1e-9
@@ -186,10 +183,11 @@ class DataCollectionNode(Node):
         obs = np.concatenate([q, ee_pose, goal, gripper])
         return obs
     
-    def extract_action(self, cmd_positions):
-        if not cmd_positions:
+    def extract_action(self, cmd_msg):
+        if not cmd_msg.data:
             return None
 
+        cmd_positions = list(cmd_msg.data)
         return np.array(cmd_positions, dtype=np.float32)
     
     def lookup_ee_pose(self):
