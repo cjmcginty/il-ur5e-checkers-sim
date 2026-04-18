@@ -2,6 +2,7 @@
 build/
 install/
 log/
+ros2_robotiq_gripper/
 
 # Python
 __pycache__/
