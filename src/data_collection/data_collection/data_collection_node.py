@@ -16,7 +16,6 @@ from sensor_msgs.msg import JointState
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Float32, Float64MultiArray
 from std_srvs.srv import Trigger
-from std_msgs.msg import Float64MultiArray
 
 import tf2_ros
 
@@ -228,8 +227,6 @@ class DataCollectionNode(Node):
         self.time_buffer.clear()
         self.command_times.clear()
         self.command_actions.clear()
-        self.latest_action = None
-        self.latest_action_time = None
         
         response.success = True
         response.message = "Recording started."
