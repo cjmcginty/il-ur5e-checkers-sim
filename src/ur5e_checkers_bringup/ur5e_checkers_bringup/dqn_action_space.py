@@ -54,21 +54,32 @@ def _generate_simple_and_single_jump_actions() -> List[ActionKey]:
     return sorted(actions)
 
 
+_FIXED_ACTIONS: List[ActionKey] = _generate_simple_and_single_jump_actions()
+_ACTION_TO_INDEX: Dict[ActionKey, int] = {
+    action_key: i for i, action_key in enumerate(_FIXED_ACTIONS)
+}
+
+
 def num_actions() -> int:
-    raise NotImplementedError("Fixed action space no longer used.")
+    return len(_FIXED_ACTIONS)
 
 
 def action_key_to_index(action_key: ActionKey) -> int:
-    raise NotImplementedError("Fixed action space no longer used.")
+    try:
+        return _ACTION_TO_INDEX[action_key]
+    except KeyError as exc:
+        raise ValueError(f"Action key not in fixed action space: {action_key}") from exc
 
 
 def index_to_action_key(index: int) -> ActionKey:
-    raise NotImplementedError("Fixed action space no longer used.")
+    if index < 0 or index >= len(_FIXED_ACTIONS):
+        raise IndexError(f"Action index out of range: {index}")
+    return _FIXED_ACTIONS[index]
 
 
 def move_to_action_key(move: MoveLike) -> ActionKey:
     """
-    Convert a legal move object from board.py into a fixed DQN action index.
+    Convert a legal move object from board.py into a fixed DQN action key.
 
     For now, only supports 2-point moves:
     - normal moves
@@ -79,15 +90,36 @@ def move_to_action_key(move: MoveLike) -> ActionKey:
     return move_to_key(move)
 
 
+def move_to_action_index(move: MoveLike) -> int:
+    action_key = move_to_action_key(move)
+    if len(action_key) != 2:
+        raise ValueError(
+            "Fixed action space only supports 2-point moves; "
+            f"got path of length {len(action_key)}: {action_key}"
+        )
+    return action_key_to_index(action_key)
+
+
 def legal_action_keys(board: CheckersBoard) -> List[ActionKey]:
     """
-    Return the currently legal action indices for this board.
+    Return the currently legal action keys for this board.
 
     For now, this only works when every legal move is a 2-point action.
     If the position contains multi-jump legal moves, this function raises.
     """
-    return list(legal_move_keys(board))
+    keys = list(legal_move_keys(board))
+    for key in keys:
+        if len(key) != 2:
+            raise ValueError(
+                "Encountered legal move outside fixed action space; "
+                f"multi-step path: {key}"
+            )
+    return keys
+
+
+def legal_action_indices(board: CheckersBoard) -> List[int]:
+    return [action_key_to_index(key) for key in legal_action_keys(board)]
 
 
 def debug_print_action_space_summary() -> None:
-    print("Fixed action space no longer used.")
+    print(f"Fixed action space size: {num_actions()}")
