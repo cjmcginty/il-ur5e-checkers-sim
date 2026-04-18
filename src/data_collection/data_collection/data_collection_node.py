@@ -2,7 +2,7 @@
 
 # data_collection_node.py
 # Records (observation, action) pairs for imitation learning
-# Action comes from JointTrajectory controller commands
+# Action comes from forward_position_controller commands
 
 import os
 import time
@@ -13,10 +13,10 @@ from rclpy.node import Node
 from rclpy.duration import Duration
 
 from sensor_msgs.msg import JointState
-from trajectory_msgs.msg import JointTrajectory
 from geometry_msgs.msg import PoseStamped
-from std_msgs.msg import Float32
+from std_msgs.msg import Float32, Float64MultiArray
 from std_srvs.srv import Trigger
+from std_msgs.msg import Float64MultiArray
 
 import tf2_ros
 
@@ -29,15 +29,15 @@ class DataCollectionNode(Node):
         self.declare_parameter("base_frame", "base_link")
         self.declare_parameter("ee_frame", "tool0")
         self.declare_parameter(
-            "joint_traj_cmd_topic",
-            "/ur5e_arm_controller/joint_trajectory"
-            )
+            "joint_cmd_topic",
+            "/forward_position_controller/commands"
+        )
         self.declare_parameter("sample_hz", 30.0)
         
         self.output_dir = self.get_parameter("output_dir").value
         self.base_frame = self.get_parameter("base_frame").value
         self.ee_frame = self.get_parameter("ee_frame").value
-        self.cmd_topic = self.get_parameter("joint_traj_cmd_topic").value
+        self.cmd_topic = self.get_parameter("joint_cmd_topic").value
         self.sample_hz = float(self.get_parameter("sample_hz").value)
         
         os.makedirs(self.output_dir, exist_ok=True)
@@ -50,7 +50,10 @@ class DataCollectionNode(Node):
         self.latest_joint_state = None
         self.latest_goal_pose = None
         self.latest_gripper_state = 0.0
-        self.latest_cmd_msg = None
+        self.latest_action = None
+        self.latest_action_time = None
+        self.command_times = []
+        self.command_actions = []
         
         self.joint_names = []
         self.name_to_index = {}
@@ -69,9 +72,9 @@ class DataCollectionNode(Node):
         )
         
         self.create_subscription(
-            JointTrajectory,
+            Float64MultiArray,
             self.cmd_topic,
-            self.joint_traj_callback,
+            self.forward_position_cmd_callback,
             50
         )
         
@@ -97,7 +100,7 @@ class DataCollectionNode(Node):
         self.create_timer(period, self.sample_tick)
         
         self.get_logger().info("Data collection node ready.")
-        self.get_logger().info(f"Listening to trajectory topic: {self.cmd_topic}")
+        self.get_logger().info(f"Listening to command topic: {self.cmd_topic}")
         
     # Callbacks
     def joint_state_callback(self, msg):
@@ -117,28 +120,33 @@ class DataCollectionNode(Node):
     def gripper_state_callback(self, msg):
         self.latest_gripper_state = msg.data
         
-    def joint_traj_callback(self, msg):
-        if len(msg.points) == 0:
+    def forward_position_cmd_callback(self, msg):
+        if not msg.data:
             return
-        if not msg.points[0].positions:
-            return
-        self.latest_cmd_msg = msg
+
+        t = self.get_clock().now().nanoseconds * 1e-9
+        self.latest_action = action
+        self.latest_action_time = t
+
+        if self.recording:
+            self.command_times.append(t)
+            self.command_actions.append(action.copy())
 
     def sample_tick(self):
         if not self.recording:
             return
         if self.latest_joint_state is None:
             return
-        if self.latest_cmd_msg is None:
-            return
-
-        obs = self.build_observation()
-        act = self.extract_action(self.latest_cmd_msg)
-
-        if obs is None or act is None:
+        if self.latest_action is None:
             return
 
         t = self.get_clock().now().nanoseconds * 1e-9
+
+        obs = self.build_observation()
+        act = self.latest_action.copy()
+
+        if obs is None:
+            return
 
         self.obs_buffer.append(obs)
         self.act_buffer.append(act)
@@ -175,27 +183,12 @@ class DataCollectionNode(Node):
         obs = np.concatenate([q, ee_pose, goal, gripper])
         return obs
     
-    def extract_action(self, traj_msg):
-        point = traj_msg.points[0]
-        
-        if not point.positions:
+    def extract_action(self, cmd_msg):
+        if not cmd_msg.data:
             return None
-        
-        cmd_names = traj_msg.joint_names
-        cmd_positions = point.positions
-        
-        # Reorder command to match joint_states order
-        if not self.joint_names:
-            return np.array(cmd_positions, dtype=np.float32)
-        
-        action = np.zeros(len(self.joint_names), dtype=np.float32)
-        
-        for name, pos in zip(cmd_names, cmd_positions):
-            if name in self.name_to_index:
-                idx = self.name_to_index[name]
-                action[idx] = pos
-                
-        return action
+
+        cmd_positions = list(cmd_msg.data)
+        return np.array(cmd_positions, dtype=np.float32)
     
     def lookup_ee_pose(self):
         try:
@@ -229,6 +222,10 @@ class DataCollectionNode(Node):
         self.obs_buffer.clear()
         self.act_buffer.clear()
         self.time_buffer.clear()
+        self.command_times.clear()
+        self.command_actions.clear()
+        self.latest_action = None
+        self.latest_action_time = None
         
         response.success = True
         response.message = "Recording started."
@@ -251,6 +248,12 @@ class DataCollectionNode(Node):
         observations = np.stack(self.obs_buffer)
         actions = np.stack(self.act_buffer)
         timestamps = np.array(self.time_buffer)
+        command_timestamps = np.array(self.command_times, dtype=np.float64)
+
+        if len(self.command_actions) > 0:
+            command_actions = np.stack(self.command_actions)
+        else:
+            command_actions = np.zeros((0, actions.shape[1]), dtype=np.float32)
         
         filename = f"episode_{time.strftime('%Y%m%d_%H%M%S')}.npz"
         path = os.path.join(self.output_dir, filename)
@@ -260,7 +263,9 @@ class DataCollectionNode(Node):
             observations=observations,
             actions=actions,
             timestamps=timestamps,
-            joint_names=np.array(self.joint_names, dtype=object)
+            joint_names=np.array(self.joint_names, dtype=object),
+            command_timestamps=command_timestamps,
+            command_actions=command_actions
         )
         
         response.success = True
