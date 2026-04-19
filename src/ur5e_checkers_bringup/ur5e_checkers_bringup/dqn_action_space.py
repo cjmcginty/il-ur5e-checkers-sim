@@ -1,7 +1,7 @@
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Tuple
 
-from ur5e_checkers_bringup.board import CheckersBoard, MoveLike
-from ur5e_checkers_bringup.dqn_utils import legal_move_keys, move_to_key
+from ur5e_checkers_bringup.board import CheckersBoard
+from ur5e_checkers_bringup.dqn_utils import move_to_key
 
 Coord = Tuple[int, int]
 ActionKey = Tuple[Coord, ...]
@@ -15,44 +15,24 @@ def _playable_square(r: int, c: int) -> bool:
     return (r + c) % 2 == 1
 
 
-def _generate_all_action_keys() -> List[ActionKey]:
+def _jumped_square(a: Coord, b: Coord) -> Coord:
+    """Return the square jumped over between a -> b"""
+    return ((a[0] + b[0]) // 2, (a[1] + b[1]) // 2)
+
+
+def _generate_all_action_keys(max_depth: int = 10) -> List[ActionKey]:
     """
-    Generate a fixed action space containing all geometrically valid:
-    - 1-step diagonal moves
-    - 1-jump captures
-    - multi-jump capture paths
+    Generate a fixed action space containing:
+    - simple diagonal moves
+    - all multi-jump capture paths
 
-    Each action is represented as a path-like tuple:
-        ((r0, c0), (r1, c1))
-        ((r0, c0), (r1, c1), (r2, c2))
-        ...
-
-    This is a geometry-only superset of legal moves. The board logic still decides
-    which of these actions are legal in a given position.
+    IMPORTANT:
+    - We DO NOT forbid revisiting landing squares (kings can legally do this)
+    - We DO forbid reusing the SAME jumped-over square (prevents infinite loops)
     """
-    actions: Set[ActionKey] = set()
 
-    step_deltas = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
-    jump_deltas = [(-2, -2), (-2, 2), (2, -2), (2, 2)]
-
-    def extend_jump_paths(path: ActionKey) -> None:
-        r, c = path[-1]
-
-        for dr, dc in jump_deltas:
-            r2 = r + dr
-            c2 = c + dc
-            landing = (r2, c2)
-
-            if not (_on_board(r2, c2) and _playable_square(r2, c2)):
-                continue
-
-            # Keep the fixed action space finite and avoid path loops.
-            if landing in path:
-                continue
-
-            next_path = path + (landing,)
-            actions.add(next_path)
-            extend_jump_paths(next_path)
+    directions = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
+    actions = set()
 
     for r in range(8):
         for c in range(8):
@@ -61,71 +41,81 @@ def _generate_all_action_keys() -> List[ActionKey]:
 
             start = (r, c)
 
-            for dr, dc in step_deltas:
-                r1 = r + dr
-                c1 = c + dc
-                if _on_board(r1, c1) and _playable_square(r1, c1):
-                    actions.add((start, (r1, c1)))
+            # --- Simple moves ---
+            for dr, dc in directions:
+                nr, nc = r + dr, c + dc
+                if _on_board(nr, nc) and _playable_square(nr, nc):
+                    actions.add((start, (nr, nc)))
 
-            for dr, dc in jump_deltas:
-                r2 = r + dr
-                c2 = c + dc
-                if _on_board(r2, c2) and _playable_square(r2, c2):
-                    jump_path = (start, (r2, c2))
-                    actions.add(jump_path)
-                    extend_jump_paths(jump_path)
+            # --- Multi-jump generation ---
+            def dfs(path: List[Coord], used_jumps: set):
+                last = path[-1]
+
+                if len(path) > 1:
+                    actions.add(tuple(path))
+
+                if len(path) >= max_depth:
+                    return
+
+                for dr, dc in directions:
+                    mid = (last[0] + dr, last[1] + dc)
+                    land = (last[0] + 2 * dr, last[1] + 2 * dc)
+
+                    if not _on_board(*land):
+                        continue
+                    if not _playable_square(*land):
+                        continue
+
+                    jump_sq = mid
+
+                    # 🚨 FIX: prevent reusing SAME captured square (not landing square)
+                    if jump_sq in used_jumps:
+                        continue
+
+                    dfs(
+                        path + [land],
+                        used_jumps | {jump_sq},
+                    )
+
+            dfs([start], set())
 
     return sorted(actions)
 
 
-_FIXED_ACTIONS: List[ActionKey] = _generate_all_action_keys()
+# Build fixed action space
+_ALL_ACTION_KEYS: List[ActionKey] = _generate_all_action_keys()
 _ACTION_TO_INDEX: Dict[ActionKey, int] = {
-    action_key: i for i, action_key in enumerate(_FIXED_ACTIONS)
+    key: i for i, key in enumerate(_ALL_ACTION_KEYS)
 }
 
 
 def num_actions() -> int:
-    return len(_FIXED_ACTIONS)
+    return len(_ALL_ACTION_KEYS)
 
 
-def action_key_to_index(action_key: ActionKey) -> int:
-    try:
-        return _ACTION_TO_INDEX[action_key]
-    except KeyError as exc:
-        raise ValueError(f"Action key not in fixed action space: {action_key}") from exc
+def action_key_to_index(key: ActionKey) -> int:
+    if key not in _ACTION_TO_INDEX:
+        raise KeyError(
+            f"Action key not in fixed action space: {key}\n"
+            f"This means your action space is STILL incomplete."
+        )
+    return _ACTION_TO_INDEX[key]
 
 
 def index_to_action_key(index: int) -> ActionKey:
-    if index < 0 or index >= len(_FIXED_ACTIONS):
-        raise IndexError(f"Action index out of range: {index}")
-    return _FIXED_ACTIONS[index]
+    return _ALL_ACTION_KEYS[index]
 
 
-def move_to_action_key(move: MoveLike) -> ActionKey:
+def validate_action_space_on_board(board: CheckersBoard) -> None:
     """
-    Convert a legal move object from board.py into a fixed DQN action key.
-
-    Supports both single-step moves and multi-step capture sequences.
+    Debug helper:
+    Verifies ALL legal board moves exist in the fixed action space.
     """
-    return move_to_key(move)
-
-
-def move_to_action_index(move: MoveLike) -> int:
-    action_key = move_to_action_key(move)
-    return action_key_to_index(action_key)
-
-
-def legal_action_keys(board: CheckersBoard) -> List[ActionKey]:
-    """
-    Return the currently legal action keys for this board.
-    """
-    return list(legal_move_keys(board))
-
-
-def legal_action_indices(board: CheckersBoard) -> List[int]:
-    return [action_key_to_index(key) for key in legal_action_keys(board)]
-
-
-def debug_print_action_space_summary() -> None:
-    max_path_len = max(len(action) for action in _FIXED_ACTIONS)
-    print(f"Fixed action space size: {num_actions()} | max path length: {max_path_len}")
+    legal = board.legal_moves()
+    for move in legal:
+        key = move_to_key(move)
+        if key not in _ACTION_TO_INDEX:
+            raise RuntimeError(
+                f"Missing action for legal move: {key}\n"
+                f"Action space is incomplete."
+            )

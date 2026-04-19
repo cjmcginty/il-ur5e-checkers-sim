@@ -198,18 +198,29 @@ def legal_moves_with_keys(board: CheckersBoard) -> List[Tuple[MoveLike, tuple]]:
     return [(m, move_to_key(m)) for m in moves]
 
 
-def legal_moves_with_indices(board: CheckersBoard) -> List[Tuple[MoveLike, tuple, int]]:
+def legal_moves_with_indices(board: CheckersBoard):
     """
     Returns:
-        [(move, key, index), ...]
-
-    This is the main hybrid helper.
+        List of (move, key, index)
     """
     from ur5e_checkers_bringup.dqn_action_space import action_key_to_index
 
-    result = []
-    for move in board.legal_moves():
+    legal = board.get_legal_moves()
+    triplets = []
+
+    for move in legal:
         key = move_to_key(move)
-        idx = action_key_to_index(key)
-        result.append((move, key, idx))
-    return result
+
+        try:
+            idx = action_key_to_index(key)
+        except KeyError:
+            raise RuntimeError(
+                f"\nDQN ACTION SPACE FAILURE\n"
+                f"Legal move not found in action space:\n{key}\n\n"
+                f"This means dqn_action_space is incomplete.\n"
+                f"Fix the generator before training.\n"
+            )
+
+        triplets.append((move, key, idx))
+
+    return triplets
