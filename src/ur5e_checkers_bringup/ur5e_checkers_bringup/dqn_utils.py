@@ -67,6 +67,19 @@ def key_to_move(key: tuple) -> MoveLike:
 
     raise ValueError(f"Invalid move key: {key}")
 
+def is_reverse_move(current_key: tuple, previous_key: tuple | None) -> bool:
+    """
+    Return True if the current move is the exact reverse of the previous move.
+
+    Examples:
+        previous: ((7, 6), (6, 7))
+        current:  ((6, 7), (7, 6))
+    """
+    if previous_key is None:
+        return False
+
+    return current_key == tuple(reversed(previous_key))
+
 
 def legal_move_keys(board: CheckersBoard) -> List[tuple]:
     """
@@ -80,11 +93,14 @@ def reward_for_move(
     board_after: CheckersBoard,
     player: str,
     winner: str | None = None,
-    step_penalty: float = -0.01,
+    step_penalty: float = -0.03,
     capture_reward: float = 0.20,
     king_reward: float = 0.10,
     win_reward: float = 1.00,
     loss_reward: float = -1.00,
+    repeated_move_penalty: float = -0.10,
+    current_move_key: tuple | None = None,
+    previous_move_key: tuple | None = None,
 ) -> float:
     """
     Compute a simple DQN reward from a transition.
@@ -120,6 +136,9 @@ def reward_for_move(
     king_delta = own_king_after - own_king_before
     if king_delta > 0:
         reward += king_reward * king_delta
+    
+    if is_reverse_move(current_move_key, previous_move_key):
+        reward += repeated_move_penalty
 
     if winner is not None:
         if winner == player:

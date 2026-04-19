@@ -3,22 +3,19 @@ import random
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Deque, List, Optional, Tuple
+from typing import Deque, List, Optional
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from ur5e_checkers_bringup.board import CheckersBoard
-from ur5e_checkers_bringup.dqn_action_space import (
-    legal_action_indices,
-    move_to_action_index,
-    num_actions,
-)
+from ur5e_checkers_bringup.board import CheckersBoard, MoveLike
+from ur5e_checkers_bringup.dqn_action_space import num_actions
 from ur5e_checkers_bringup.dqn_model import DQN
 from ur5e_checkers_bringup.dqn_utils import (
     encode_board,
     epsilon_greedy_index,
+    legal_moves_with_indices,
     reward_for_move,
 )
 
@@ -30,6 +27,7 @@ class Transition:
     reward: float
     next_state: torch.Tensor
     done: bool
+    next_legal_indices: List[int]
 
 
 class ReplayBuffer:
@@ -91,55 +89,29 @@ def get_winner(board: CheckersBoard) -> Optional[str]:
     return None
 
 
-def apply_move(board: CheckersBoard, action_index: int) -> CheckersBoard:
+def apply_move(board: CheckersBoard, move: MoveLike) -> CheckersBoard:
     """
     Applies the chosen action to a copy of the board and returns the new board.
 
     """
     next_board = clone_board(board)
 
-    legal_moves = next_board.legal_moves()
-
-    matched_move = None
-    for move in legal_moves:
-        try:
-            idx = move_to_action_index(move)
-        except ValueError:
-            continue
-
-        if idx == action_index:
-            matched_move = move
-            break
-
-    if matched_move is None:
-        raise ValueError(
-            f"Chosen action index {action_index} did not match any current legal move"
-        )
-
     if hasattr(next_board, "push") and callable(next_board.push):
-        next_board.push(matched_move)
+        next_board.push(move)
         return next_board
 
     if hasattr(next_board, "apply_move") and callable(next_board.apply_move):
-        next_board.apply_move(matched_move)
+        next_board.apply_move(move)
         return next_board
 
     if hasattr(next_board, "make_move") and callable(next_board.make_move):
-        next_board.make_move(matched_move)
+        next_board.make_move(move)
         return next_board
 
     raise AttributeError(
         "CheckersBoard is missing a supported move-application method "
         "(expected push, apply_move, or make_move)."
     )
-
-
-def select_opponent_action(board: CheckersBoard) -> int:
-    """
-    Very simple opponent: random legal move.
-    """
-    legal = legal_action_indices(board)
-    return random.choice(legal)
 
 
 def optimize_model(
@@ -161,13 +133,25 @@ def optimize_model(
     rewards = torch.tensor([t.reward for t in batch], dtype=torch.float32, device=device)
     next_states = torch.stack([t.next_state for t in batch]).to(device)
     dones = torch.tensor([t.done for t in batch], dtype=torch.float32, device=device)
+    next_legal_indices_batch = [t.next_legal_indices for t in batch]
 
     q_values = policy_net(states)
     state_action_values = q_values.gather(1, actions.unsqueeze(1)).squeeze(1)
 
     with torch.no_grad():
         next_q_values = target_net(next_states)
-        max_next_q = next_q_values.max(dim=1).values
+        max_next_q_list = []
+
+        for i, legal_indices in enumerate(next_legal_indices_batch):
+            if dones[i].item() == 1.0 or not legal_indices:
+                max_next_q_list.append(torch.tensor(0.0, device=device))
+                continue
+
+            masked_q = torch.full_like(next_q_values[i], -1e9)
+            masked_q[legal_indices] = next_q_values[i][legal_indices]
+            max_next_q_list.append(masked_q.max())
+
+        max_next_q = torch.stack(max_next_q_list)
         target_values = rewards + gamma * max_next_q * (1.0 - dones)
 
     loss_fn = nn.MSELoss()
@@ -214,21 +198,37 @@ def train_dqn(
         board = CheckersBoard()
         episode_reward = 0.0
         losses: List[float] = []
+        previous_move_key = None
+        previous_opponent_move_key = None
 
         for step in range(max_steps_per_episode):
             state = encode_board(board)
 
-            try:
-                legal_indices = legal_action_indices(board)
-            except ValueError as e:
-                print(f"[episode {episode}] stopped: {e}")
+            legal_triplets = legal_moves_with_indices(board)
+            if not legal_triplets:
+                print(f"[episode {episode}] stopped: no legal moves available")
                 break
+
+            legal_indices = [idx for _, _, idx in legal_triplets]
 
             q_values = policy_net(state.to(device)).squeeze(0).detach().cpu()
             action_index = epsilon_greedy_index(q_values, legal_indices, epsilon)
 
+            selected_move = None
+            selected_key = None
+            for move, key, idx in legal_triplets:
+                if idx == action_index:
+                    selected_move = move
+                    selected_key = key
+                    break
+
+            if selected_move is None:
+                raise RuntimeError(
+                    f"Chosen action index {action_index} did not match any current legal move"
+                )
+
             board_before = clone_board(board)
-            board = apply_move(board, action_index)
+            board = apply_move(board, selected_move)
             winner = get_winner(board)
 
             reward = reward_for_move(
@@ -236,10 +236,19 @@ def train_dqn(
                 board_after=board,
                 player=board_before.turn,
                 winner=winner,
+                current_move_key=selected_key,
+                previous_move_key=previous_move_key,
             )
 
+            previous_move_key = selected_key
             done = winner is not None
             next_state = encode_board(board)
+
+            if done:
+                next_legal_indices = []
+            else:
+                next_legal_triplets = legal_moves_with_indices(board)
+                next_legal_indices = [idx for _, _, idx in next_legal_triplets]
 
             replay_buffer.push(
                 Transition(
@@ -248,6 +257,7 @@ def train_dqn(
                     reward=reward,
                     next_state=next_state,
                     done=done,
+                    next_legal_indices=next_legal_indices,
                 )
             )
 
@@ -269,15 +279,22 @@ def train_dqn(
                 break
 
             # opponent turn
-            try:
-                opponent_legal = legal_action_indices(board)
-            except ValueError as e:
-                print(f"[episode {episode}] opponent stopped: {e}")
+            opponent_triplets = legal_moves_with_indices(board)
+            if not opponent_triplets:
+                print(f"[episode {episode}] opponent stopped: no legal moves available")
                 break
 
-            opponent_action = select_opponent_action(board)
+            opponent_move = None
+            opponent_key = None
+            opponent_action = None
+
+            move, key, index = random.choice(opponent_triplets)
+            opponent_move = move
+            opponent_key = key
+            opponent_action = index
+
             board_before_opp = clone_board(board)
-            board = apply_move(board, opponent_action)
+            board = apply_move(board, opponent_move)
             winner = get_winner(board)
 
             opponent_player = board_before_opp.turn
@@ -286,10 +303,19 @@ def train_dqn(
                 board_after=board,
                 player=opponent_player,
                 winner=winner,
+                current_move_key=opponent_key,
+                previous_move_key=previous_opponent_move_key,
             )
 
+            previous_opponent_move_key = opponent_key
             done = winner is not None
             next_state_after_opp = encode_board(board)
+
+            if done:
+                next_legal_indices_after_opp = []
+            else:
+                next_legal_triplets_after_opp = legal_moves_with_indices(board)
+                next_legal_indices_after_opp = [idx for _, _, idx in next_legal_triplets_after_opp]
 
             replay_buffer.push(
                 Transition(
@@ -298,6 +324,7 @@ def train_dqn(
                     reward=opponent_reward,
                     next_state=next_state_after_opp,
                     done=done,
+                    next_legal_indices=next_legal_indices_after_opp,
                 )
             )
 
