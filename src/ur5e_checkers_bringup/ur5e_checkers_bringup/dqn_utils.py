@@ -1,9 +1,8 @@
-from typing import Iterable, List
-
 import torch
 
-from ur5e_checkers_bringup.board import CheckersBoard, Move, MoveLike, MoveSequence
+from typing import Iterable, List, Tuple
 
+from ur5e_checkers_bringup.board import CheckersBoard, Move, MoveLike, MoveSequence
 
 def encode_board(board: CheckersBoard) -> torch.Tensor:
     """
@@ -163,3 +162,35 @@ def epsilon_greedy_index(
     masked_q = torch.full_like(q_values, -1e9)
     masked_q[legal_indices] = q_values[legal_indices]
     return int(torch.argmax(masked_q).item())
+
+def legal_moves(board: CheckersBoard) -> List[MoveLike]:
+    """
+    Return actual legal move objects from the board.
+    """
+    return board.legal_moves()
+
+
+def legal_moves_with_keys(board: CheckersBoard) -> List[Tuple[MoveLike, tuple]]:
+    """
+    Returns:
+        [(move, key), ...]
+    """
+    moves = board.legal_moves()
+    return [(m, move_to_key(m)) for m in moves]
+
+
+def legal_moves_with_indices(board: CheckersBoard) -> List[Tuple[MoveLike, tuple, int]]:
+    """
+    Returns:
+        [(move, key, index), ...]
+
+    This is the main hybrid helper.
+    """
+    from ur5e_checkers_bringup.dqn_action_space import action_key_to_index
+
+    result = []
+    for move in board.legal_moves():
+        key = move_to_key(move)
+        idx = action_key_to_index(key)
+        result.append((move, key, idx))
+    return result
