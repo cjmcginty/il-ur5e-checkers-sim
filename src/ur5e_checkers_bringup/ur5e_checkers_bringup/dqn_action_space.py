@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple
+from typing import Dict, List, Set, Tuple
 
 from ur5e_checkers_bringup.board import CheckersBoard, MoveLike
 from ur5e_checkers_bringup.dqn_utils import legal_move_keys, move_to_key
@@ -15,22 +15,44 @@ def _playable_square(r: int, c: int) -> bool:
     return (r + c) % 2 == 1
 
 
-def _generate_simple_and_single_jump_actions() -> List[ActionKey]:
+def _generate_all_action_keys() -> List[ActionKey]:
     """
-    Generate a fixed action space containing all:
+    Generate a fixed action space containing all geometrically valid:
     - 1-step diagonal moves
-    - 1-jump diagonal captures
+    - 1-jump captures
+    - multi-jump capture paths
 
     Each action is represented as a path-like tuple:
         ((r0, c0), (r1, c1))
+        ((r0, c0), (r1, c1), (r2, c2))
+        ...
 
-    This does NOT enumerate full multi-jump sequences.
-    Those will be handled by board legal-move logic later if needed.
+    This is a geometry-only superset of legal moves. The board logic still decides
+    which of these actions are legal in a given position.
     """
-    actions = set()
+    actions: Set[ActionKey] = set()
 
     step_deltas = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
     jump_deltas = [(-2, -2), (-2, 2), (2, -2), (2, 2)]
+
+    def extend_jump_paths(path: ActionKey) -> None:
+        r, c = path[-1]
+
+        for dr, dc in jump_deltas:
+            r2 = r + dr
+            c2 = c + dc
+            landing = (r2, c2)
+
+            if not (_on_board(r2, c2) and _playable_square(r2, c2)):
+                continue
+
+            # Keep the fixed action space finite and avoid path loops.
+            if landing in path:
+                continue
+
+            next_path = path + (landing,)
+            actions.add(next_path)
+            extend_jump_paths(next_path)
 
     for r in range(8):
         for c in range(8):
@@ -49,12 +71,14 @@ def _generate_simple_and_single_jump_actions() -> List[ActionKey]:
                 r2 = r + dr
                 c2 = c + dc
                 if _on_board(r2, c2) and _playable_square(r2, c2):
-                    actions.add((start, (r2, c2)))
+                    jump_path = (start, (r2, c2))
+                    actions.add(jump_path)
+                    extend_jump_paths(jump_path)
 
     return sorted(actions)
 
 
-_FIXED_ACTIONS: List[ActionKey] = _generate_simple_and_single_jump_actions()
+_FIXED_ACTIONS: List[ActionKey] = _generate_all_action_keys()
 _ACTION_TO_INDEX: Dict[ActionKey, int] = {
     action_key: i for i, action_key in enumerate(_FIXED_ACTIONS)
 }
@@ -81,40 +105,21 @@ def move_to_action_key(move: MoveLike) -> ActionKey:
     """
     Convert a legal move object from board.py into a fixed DQN action key.
 
-    For now, only supports 2-point moves:
-    - normal moves
-    - single captures
-
-    Full multi-jump capture sequences will need an expanded action space later.
+    Supports both single-step moves and multi-step capture sequences.
     """
     return move_to_key(move)
 
 
 def move_to_action_index(move: MoveLike) -> int:
     action_key = move_to_action_key(move)
-    if len(action_key) != 2:
-        raise ValueError(
-            "Fixed action space only supports 2-point moves; "
-            f"got path of length {len(action_key)}: {action_key}"
-        )
     return action_key_to_index(action_key)
 
 
 def legal_action_keys(board: CheckersBoard) -> List[ActionKey]:
     """
     Return the currently legal action keys for this board.
-
-    For now, this only works when every legal move is a 2-point action.
-    If the position contains multi-jump legal moves, this function raises.
     """
-    keys = list(legal_move_keys(board))
-    for key in keys:
-        if len(key) != 2:
-            raise ValueError(
-                "Encountered legal move outside fixed action space; "
-                f"multi-step path: {key}"
-            )
-    return keys
+    return list(legal_move_keys(board))
 
 
 def legal_action_indices(board: CheckersBoard) -> List[int]:
@@ -122,4 +127,5 @@ def legal_action_indices(board: CheckersBoard) -> List[int]:
 
 
 def debug_print_action_space_summary() -> None:
-    print(f"Fixed action space size: {num_actions()}")
+    max_path_len = max(len(action) for action in _FIXED_ACTIONS)
+    print(f"Fixed action space size: {num_actions()} | max path length: {max_path_len}")
