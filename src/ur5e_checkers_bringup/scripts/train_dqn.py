@@ -13,7 +13,7 @@ from ur5e_checkers_bringup.board import CheckersBoard, MoveLike
 from ur5e_checkers_bringup.dqn_action_space import num_actions
 from ur5e_checkers_bringup.dqn_model import DQN
 from ur5e_checkers_bringup.dqn_utils import (
-    encode_board,
+    encode_canonical_board,
     epsilon_greedy_index,
     legal_moves_with_indices,
     reward_for_move,
@@ -202,7 +202,7 @@ def train_dqn(
         previous_opponent_move_key = None
 
         for step in range(max_steps_per_episode):
-            state = encode_board(board)
+            state = encode_canonical_board(board)
 
             legal_triplets = legal_moves_with_indices(board)
             if not legal_triplets:
@@ -242,7 +242,7 @@ def train_dqn(
 
             previous_move_key = selected_key
             done = winner is not None
-            next_state = encode_board(board)
+            next_state = encode_canonical_board(board)
 
             if done:
                 next_legal_indices = []
@@ -309,7 +309,7 @@ def train_dqn(
 
             previous_opponent_move_key = opponent_key
             done = winner is not None
-            next_state_after_opp = encode_board(board)
+            next_state_after_opp = encode_canonical_board(board)
 
             if done:
                 next_legal_indices_after_opp = []

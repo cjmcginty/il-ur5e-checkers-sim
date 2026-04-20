@@ -1,3 +1,5 @@
+import copy
+
 import torch
 
 from typing import Iterable, List, Tuple
@@ -37,6 +39,63 @@ def encode_board(board: CheckersBoard) -> torch.Tensor:
 
     return state
 
+
+def _swap_piece_colors(piece: str) -> str:
+    if piece == "r":
+        return "b"
+    if piece == "R":
+        return "B"
+    if piece == "b":
+        return "r"
+    if piece == "B":
+        return "R"
+    return piece
+
+
+def canonicalize_coord(coord: tuple[int, int]) -> tuple[int, int]:
+    """Rotate a board coordinate 180 degrees."""
+    return (7 - coord[0], 7 - coord[1])
+
+
+def canonicalize_move_key_for_player(move_key: tuple, player: str) -> tuple:
+    """
+    Convert a move key into the fixed training perspective.
+
+    - Red keeps its coordinates as-is
+    - Black is rotated 180 degrees so it looks like the same side-to-move convention
+    """
+    if player == "r":
+        return move_key
+    if player == "b":
+        return tuple(canonicalize_coord(coord) for coord in move_key)
+    raise ValueError(f"Invalid player: {player}")
+
+
+def canonicalize_board(board: CheckersBoard) -> CheckersBoard:
+    """
+    Return a board from a fixed learning perspective where the side to move
+    is always represented as red.
+    """
+    if board.turn == "r":
+        return copy.deepcopy(board)
+
+    canonical = copy.deepcopy(board)
+    rotated = [["." for _ in range(8)] for _ in range(8)]
+
+    for r in range(8):
+        for c in range(8):
+            rotated[7 - r][7 - c] = _swap_piece_colors(board.board[r][c])
+
+    canonical.board = rotated
+    canonical.turn = "r"
+    canonical.red_captured = board.black_captured
+    canonical.black_captured = board.red_captured
+    return canonical
+
+
+def encode_canonical_board(board: CheckersBoard) -> torch.Tensor:
+    """Encode the board after normalizing to the fixed learning perspective."""
+    return encode_board(canonicalize_board(board))
 
 def move_to_key(move: MoveLike) -> tuple:
     """
@@ -205,11 +264,11 @@ def legal_moves_with_indices(board: CheckersBoard):
     """
     from ur5e_checkers_bringup.dqn_action_space import action_key_to_index
 
-    legal = board.get_legal_moves()
+    legal = board.legal_moves()
     triplets = []
 
     for move in legal:
-        key = move_to_key(move)
+        key = canonicalize_move_key_for_player(move_to_key(move), board.turn)
 
         try:
             idx = action_key_to_index(key)
