@@ -107,6 +107,22 @@ def generate_launch_description():
         ],
     )
 
+    dqn_policy_node = Node(
+        package="ur5e_checkers_bringup",
+        executable="dqn_policy_node",
+        output="screen",
+        parameters=[
+            {
+                "board_state_topic": "/checkers/board_state",
+                "legal_moves_topic": "/checkers/legal_moves",
+                "selected_move_topic": "/checkers/selected_move",
+                "model_path": "/workspaces/ur5e-checkers-irl/models/dqn_checkers.pt",
+                "device": "auto",
+                "publish_once_per_position": True,
+            }
+        ],
+    )
+
     rsp = Node(
         package="robot_state_publisher",
         executable="robot_state_publisher",
@@ -256,6 +272,7 @@ def generate_launch_description():
         clock_bridge,
         pose_bridge,
         checkers_node,
+        dqn_policy_node,
         rsp,
         static_tf,
 
