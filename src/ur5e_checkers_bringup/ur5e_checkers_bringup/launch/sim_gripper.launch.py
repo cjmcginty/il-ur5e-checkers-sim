@@ -101,7 +101,7 @@ def generate_launch_description():
         output="screen",
         parameters=[
             {
-                "model_states_topic": "/world/checkers_world/dynamic_pose/info",
+                "model_states_topic": "/checkers/piece_states",
                 "update_hz": 5.0,
             }
         ],

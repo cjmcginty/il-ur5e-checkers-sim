@@ -123,15 +123,22 @@ class DQNPolicyNode(Node):
         self.try_publish_selected_move()
 
     def legal_moves_callback(self, msg: String) -> None:
+        text = msg.data.strip()
+
+        # Try JSON first
         try:
-            data = json.loads(msg.data)
+            data = json.loads(text)
             if isinstance(data, list):
                 self.latest_legal_move_strings = [str(x) for x in data]
             else:
                 self.latest_legal_move_strings = []
         except json.JSONDecodeError:
-            self.get_logger().warning("Failed to parse /checkers/legal_moves as JSON list.")
-            self.latest_legal_move_strings = []
+            # Fallback: assume newline-separated plain text
+            self.latest_legal_move_strings = [
+                line.strip()
+                for line in text.splitlines()
+                if line.strip()
+            ]
 
         self.try_publish_selected_move()
 
