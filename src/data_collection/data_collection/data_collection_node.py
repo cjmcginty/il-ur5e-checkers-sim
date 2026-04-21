@@ -143,6 +143,13 @@ class DataCollectionNode(Node):
         if self.latest_action is None:
             return
 
+        if len(self.latest_action) != len(self.latest_joint_state.position):
+            self.get_logger().warn(
+                f"Action length {len(self.latest_action)} does not match "
+                f"joint state length {len(self.latest_joint_state.position)}; skipping sample."
+            )
+            return
+
         t = self.get_clock().now().nanoseconds * 1e-9
 
         obs = self.build_observation()
@@ -227,6 +234,8 @@ class DataCollectionNode(Node):
         self.time_buffer.clear()
         self.command_times.clear()
         self.command_actions.clear()
+        self.latest_action = None
+        self.latest_action_time = None
         
         response.success = True
         response.message = "Recording started."
