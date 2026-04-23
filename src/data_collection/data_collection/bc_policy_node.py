@@ -7,6 +7,8 @@ from rclpy.node import Node
 from rclpy.duration import Duration
 
 from sensor_msgs.msg import JointState
+from geometry_msgs.msg import PoseStamped
+from std_msgs.msg import Float32
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 import tf2_ros
@@ -52,10 +54,14 @@ class BCPolicyNode(Node):
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
         self.latest_joint_state = None
+        self.latest_goal_pose = None
+        self.latest_gripper_state = 0.0
         self.joint_names = []
         self.name_to_index = {}
 
         self.sub_js = self.create_subscription(JointState, "/joint_states", self.joint_state_cb, 50)
+        self.sub_goal = self.create_subscription(PoseStamped, "il_goal_pose", self.goal_pose_cb, 10)
+        self.sub_gripper = self.create_subscription(Float32, "/gripper/state", self.gripper_state_cb, 10)
         self.pub = self.create_publisher(JointTrajectory, self.cmd_topic, 10)
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -95,6 +101,12 @@ class BCPolicyNode(Node):
             self.name_to_index = {n: i for i, n in enumerate(self.joint_names)}
             self.get_logger().info("Joint order captured from /joint_states.")
 
+    def goal_pose_cb(self, msg: PoseStamped):
+        self.latest_goal_pose = msg
+
+    def gripper_state_cb(self, msg: Float32):
+        self.latest_gripper_state = msg.data
+
     def lookup_ee_pose(self):
         try:
             tf_msg = self.tf_buffer.lookup_transform(
@@ -114,8 +126,20 @@ class BCPolicyNode(Node):
             return None
         q = np.array(self.latest_joint_state.position, dtype=np.float32)
         ee = self.lookup_ee_pose()
-        goal = np.zeros(7, dtype=np.float32)
-        gripper = np.zeros(1, dtype=np.float32)
+        if self.latest_goal_pose is not None:
+            p = self.latest_goal_pose.pose
+            goal = np.array([
+                p.position.x,
+                p.position.y,
+                p.position.z,
+                p.orientation.x,
+                p.orientation.y,
+                p.orientation.z,
+                p.orientation.w,
+            ], dtype=np.float32)
+        else:
+            goal = np.zeros(7, dtype=np.float32)
+        gripper = np.array([self.latest_gripper_state], dtype=np.float32)
         return np.concatenate([q, ee, goal, gripper])
 
     def tick(self):

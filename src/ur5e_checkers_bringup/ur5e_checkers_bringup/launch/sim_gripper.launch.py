@@ -101,8 +101,43 @@ def generate_launch_description():
         output="screen",
         parameters=[
             {
-                "model_states_topic": "/world/checkers_world/dynamic_pose/info",
+                "model_states_topic": "/checkers/piece_states",
                 "update_hz": 5.0,
+            }
+        ],
+    )
+
+    dqn_policy_node = Node(
+        package="ur5e_checkers_bringup",
+        executable="dqn_policy_node",
+        output="screen",
+        parameters=[
+            {
+                "board_state_topic": "/checkers/board_state",
+                "legal_moves_topic": "/checkers/legal_moves",
+                "selected_move_topic": "/checkers/selected_move",
+                "model_path": "/workspaces/ur5e-checkers-irl/models/dqn_checkers.pt",
+                "device": "auto",
+                "publish_once_per_position": True,
+                "republish_hz": 2.0,
+            }
+        ],
+    )
+
+    move_target_node = Node(
+        package="ur5e_checkers_bringup",
+        executable="move_target_node",
+        name="move_target_node",
+        output="screen",
+        parameters=[
+            {
+                "selected_move_topic": "/checkers/selected_move",
+                "piece_states_topic": "/checkers/piece_states",
+                "move_target_topic": "/checkers/move_targets",
+                "board_center_x": 0.6,
+                "board_center_y": 0.0,
+                "board_size": 0.40,
+                "piece_z": 0.03,
             }
         ],
     )
@@ -256,6 +291,8 @@ def generate_launch_description():
         clock_bridge,
         pose_bridge,
         checkers_node,
+        dqn_policy_node,
+        move_target_node,
         rsp,
         static_tf,
 
