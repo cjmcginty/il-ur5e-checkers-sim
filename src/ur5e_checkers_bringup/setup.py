@@ -51,6 +51,7 @@ setup(
             'test_checkers = ur5e_checkers_bringup.test_checkers:main',
             "checkers_piece_manager = ur5e_checkers_bringup.checkers_piece_manager:main",
             'dqn_policy_node = ur5e_checkers_bringup.dqn_policy_node:main',
+            "move_target_node = ur5e_checkers_bringup.move_target_node:main",
         ],
     },
 )

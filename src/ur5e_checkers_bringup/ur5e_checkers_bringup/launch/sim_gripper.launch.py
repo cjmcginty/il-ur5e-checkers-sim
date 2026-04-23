@@ -124,6 +124,24 @@ def generate_launch_description():
         ],
     )
 
+    move_target_node = Node(
+        package="ur5e_checkers_bringup",
+        executable="move_target_node",
+        name="move_target_node",
+        output="screen",
+        parameters=[
+            {
+                "selected_move_topic": "/checkers/selected_move",
+                "piece_states_topic": "/checkers/piece_states",
+                "move_target_topic": "/checkers/move_targets",
+                "board_center_x": 0.6,
+                "board_center_y": 0.0,
+                "board_size": 0.40,
+                "piece_z": 0.03,
+            }
+        ],
+    )
+
     rsp = Node(
         package="robot_state_publisher",
         executable="robot_state_publisher",
@@ -274,6 +292,7 @@ def generate_launch_description():
         pose_bridge,
         checkers_node,
         dqn_policy_node,
+        move_target_node,
         rsp,
         static_tf,
 

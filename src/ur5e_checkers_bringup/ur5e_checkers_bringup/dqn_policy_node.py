@@ -130,7 +130,6 @@ class DQNPolicyNode(Node):
 
     def board_state_callback(self, msg: String) -> None:
         self.latest_board_text = msg.data
-        self.try_publish_selected_move()
 
     def legal_moves_callback(self, msg: String) -> None:
         text = msg.data.strip()
