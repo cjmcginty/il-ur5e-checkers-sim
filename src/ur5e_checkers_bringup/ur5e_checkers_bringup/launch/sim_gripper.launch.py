@@ -119,6 +119,7 @@ def generate_launch_description():
                 "model_path": "/workspaces/ur5e-checkers-irl/models/dqn_checkers.pt",
                 "device": "auto",
                 "publish_once_per_position": True,
+                "republish_hz": 2.0,
             }
         ],
     )

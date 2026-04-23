@@ -27,6 +27,7 @@ class DQNPolicyNode(Node):
         self.declare_parameter("model_path", "")
         self.declare_parameter("device", "auto")
         self.declare_parameter("publish_once_per_position", True)
+        self.declare_parameter("republish_hz", 2.0)
 
         self.board_state_topic = (
             self.get_parameter("board_state_topic").get_parameter_value().string_value
@@ -48,6 +49,11 @@ class DQNPolicyNode(Node):
             .get_parameter_value()
             .bool_value
         )
+        self.republish_hz = (
+            self.get_parameter("republish_hz")
+            .get_parameter_value()
+            .double_value
+        )
 
         if self.device_param == "auto":
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -61,6 +67,8 @@ class DQNPolicyNode(Node):
         self.latest_board_text: Optional[str] = None
         self.latest_legal_move_strings: List[str] = []
         self.last_published_position_key: Optional[str] = None
+        self.last_selected_move_str: Optional[str] = None
+        self.last_selected_position_key: Optional[str] = None
 
         self.selected_move_pub = self.create_publisher(
             String,
@@ -80,6 +88,8 @@ class DQNPolicyNode(Node):
             self.legal_moves_callback,
             10,
         )
+
+        self.create_timer(1.0 / max(self.republish_hz, 0.1), self.republish_selected_move)
 
         self.load_model_if_possible()
 
@@ -189,6 +199,9 @@ class DQNPolicyNode(Node):
 
         selected_move_str = self.move_to_string(selected_move)
 
+        self.last_selected_move_str = selected_move_str
+        self.last_selected_position_key = position_key
+
         msg = String()
         msg.data = selected_move_str
         self.selected_move_pub.publish(msg)
@@ -196,6 +209,17 @@ class DQNPolicyNode(Node):
         self.last_published_position_key = position_key
 
         self.get_logger().info(f"Published selected move: {selected_move_str}")
+
+    def republish_selected_move(self) -> None:
+        if not self.model_loaded:
+            return
+
+        if self.last_selected_move_str is None:
+            return
+
+        msg = String()
+        msg.data = self.last_selected_move_str
+        self.selected_move_pub.publish(msg)
 
     def parse_board_state_text(self, board_text: str) -> CheckersBoard:
         lines = [line.strip() for line in board_text.strip().splitlines() if line.strip()]
