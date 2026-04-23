@@ -40,12 +40,26 @@ class BCPolicyNode(Node):
         self.declare_parameter("base_frame", "base_link")
         self.declare_parameter("ee_frame", "tool0")
         self.declare_parameter("rate_hz", 30.0)
+        self.declare_parameter(
+            "controlled_joints",
+            [
+                "shoulder_pan_joint",
+                "shoulder_lift_joint",
+                "elbow_joint",
+                "wrist_1_joint",
+                "wrist_2_joint",
+                "wrist_3_joint",
+            ],
+        )
 
         self.model_path = self.get_parameter("model_path").value
         self.cmd_topic = self.get_parameter("cmd_topic").value
         self.base_frame = self.get_parameter("base_frame").value
         self.ee_frame = self.get_parameter("ee_frame").value
         self.rate_hz = float(self.get_parameter("rate_hz").value)
+        self.controlled_joints = list(
+            self.get_parameter("controlled_joints").value
+        )
 
         self.tf_buffer = tf2_ros.Buffer(cache_time=Duration(seconds=10.0))
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
@@ -111,6 +125,24 @@ class BCPolicyNode(Node):
     def gripper_state_cb(self, msg: Float32):
         self.latest_gripper_state = msg.data
 
+    def get_controlled_joint_positions(self):
+        if self.latest_joint_state is None:
+            return None
+        if not self.name_to_index:
+            return None
+
+        q = []
+        for name in self.controlled_joints:
+            if name not in self.name_to_index:
+                self.get_logger().warn(
+                    f"Controlled joint '{name}' not found in /joint_states."
+                )
+                return None
+            idx = self.name_to_index[name]
+            q.append(self.latest_joint_state.position[idx])
+
+        return np.array(q, dtype=np.float32)
+
     def lookup_ee_pose(self):
         try:
             tf_msg = self.tf_buffer.lookup_transform(
@@ -129,7 +161,10 @@ class BCPolicyNode(Node):
         if self.latest_joint_state is None:
             return None
 
-        q = np.array(self.latest_joint_state.position, dtype=np.float32)
+        q = self.get_controlled_joint_positions()
+        if q is None:
+            return None
+            
         ee = self.lookup_ee_pose()
 
         if self.latest_goal_pose is not None:
@@ -163,7 +198,7 @@ class BCPolicyNode(Node):
         with torch.no_grad():
             y = self.model(x).squeeze(0).cpu().numpy().astype(np.float32)
 
-        if len(y) != len(self.joint_names):
+        if len(y) != len(self.controlled_joints):
             self.get_logger().error(
                 f"Model output dim {len(y)} does not match joint count {len(self.joint_names)}"
             )

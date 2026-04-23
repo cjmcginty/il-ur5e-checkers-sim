@@ -32,12 +32,24 @@ class DataCollectionNode(Node):
             "/forward_position_controller/commands"
         )
         self.declare_parameter("sample_hz", 30.0)
+        self.declare_parameter(
+            "controlled_joints",
+            [
+                "shoulder_pan_joint",
+                "shoulder_lift_joint",
+                "elbow_joint",
+                "wrist_1_joint",
+                "wrist_2_joint",
+                "wrist_3_joint",
+            ],
+        )
         
         self.output_dir = self.get_parameter("output_dir").value
         self.base_frame = self.get_parameter("base_frame").value
         self.ee_frame = self.get_parameter("ee_frame").value
         self.cmd_topic = self.get_parameter("joint_cmd_topic").value
         self.sample_hz = float(self.get_parameter("sample_hz").value)
+        self.controlled_joints = list(self.get_parameter("controlled_joints").value)
         
         os.makedirs(self.output_dir, exist_ok=True)
         
@@ -143,10 +155,10 @@ class DataCollectionNode(Node):
         if self.latest_action is None:
             return
 
-        if len(self.latest_action) != len(self.latest_joint_state.position):
+        if len(self.latest_action) != len(self.controlled_joints):
             self.get_logger().warn(
                 f"Action length {len(self.latest_action)} does not match "
-                f"joint state length {len(self.latest_joint_state.position)}; skipping sample."
+                f"controlled joint count {len(self.controlled_joints)}; skipping sample."
             )
             return
 
@@ -161,6 +173,24 @@ class DataCollectionNode(Node):
         self.obs_buffer.append(obs)
         self.act_buffer.append(act)
         self.time_buffer.append(t)
+
+    def get_controlled_joint_positions(self):
+        if self.latest_joint_state is None:
+            return None
+        if not self.name_to_index:
+            return None
+
+        q = []
+        for name in self.controlled_joints:
+            if name not in self.name_to_index:
+                self.get_logger().warn(
+                    f"Controlled joint '{name}' not found in /joint_states."
+                )
+                return None
+            idx = self.name_to_index[name]
+            q.append(self.latest_joint_state.position[idx])
+
+        return np.array(q, dtype=np.float32)
         
     # Observation and Action Construction
     def build_observation(self):
@@ -168,8 +198,9 @@ class DataCollectionNode(Node):
             return None
         
         # Joint positions
-        q = np.array(self.latest_joint_state.position, dtype=np.float32)
-        
+        q = self.get_controlled_joint_positions()
+        if q is None:
+            return None        
         # End effector pose from TF
         ee_pose = self.lookup_ee_pose()
         
@@ -273,7 +304,7 @@ class DataCollectionNode(Node):
             observations=observations,
             actions=actions,
             timestamps=timestamps,
-            joint_names=np.array(self.joint_names, dtype=object),
+            joint_names=np.array(self.controlled_joints, dtype=object),
             command_timestamps=command_timestamps,
             command_actions=command_actions
         )
