@@ -26,6 +26,7 @@ setup(
         'console_scripts': [
 		'data_collection_node = data_collection.data_collection_node:main',
         "bc_policy_node = data_collection.bc_policy_node:main",
+        'move_targets_to_il_pose = data_collection.move_targets_to_il_pose:main',
         ],
     },
 )

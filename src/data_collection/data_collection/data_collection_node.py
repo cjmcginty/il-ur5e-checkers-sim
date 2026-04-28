@@ -59,6 +59,7 @@ class DataCollectionNode(Node):
         
         # State Storage
         self.latest_joint_state = None
+        self.latest_piece_pose = None
         self.latest_goal_pose = None
         self.latest_gripper_state = 0.0
         self.latest_action = None
@@ -88,10 +89,17 @@ class DataCollectionNode(Node):
             self.forward_position_cmd_callback,
             50
         )
+
+        self.create_subscription(
+            PoseStamped,
+            "/il_piece_pose",
+            self.piece_pose_callback,
+            10
+        )
         
         self.create_subscription(
             PoseStamped,
-            "il_goal_pose",
+            "/il_goal_pose",
             self.goal_pose_callback,
             10
         )
@@ -127,6 +135,9 @@ class DataCollectionNode(Node):
             
     def goal_pose_callback(self, msg):
         self.latest_goal_pose = msg
+
+    def piece_pose_callback(self, msg):
+        self.latest_piece_pose = msg
     
     def gripper_state_callback(self, msg):
         self.latest_gripper_state = msg.data
@@ -174,6 +185,22 @@ class DataCollectionNode(Node):
         self.act_buffer.append(act)
         self.time_buffer.append(t)
 
+
+    def pose_to_array(self, pose_msg):
+        if pose_msg is None:
+            return np.zeros(7, dtype=np.float32)
+
+        p = pose_msg.pose
+        return np.array([
+            p.position.x,
+            p.position.y,
+            p.position.z,
+            p.orientation.x,
+            p.orientation.y,
+            p.orientation.z,
+            p.orientation.w,
+        ], dtype=np.float32)
+
     def get_controlled_joint_positions(self):
         if self.latest_joint_state is None:
             return None
@@ -192,36 +219,29 @@ class DataCollectionNode(Node):
 
         return np.array(q, dtype=np.float32)
         
-    # Observation and Action Construction
     def build_observation(self):
         if self.latest_joint_state is None:
             return None
-        
-        # Joint positions
+
+        # 6 controlled arm joint positions
         q = self.get_controlled_joint_positions()
         if q is None:
-            return None        
-        # End effector pose from TF
+            return None
+
+        # 7 end-effector pose values
         ee_pose = self.lookup_ee_pose()
-        
-        # Goal pose (optional)
-        if self.latest_goal_pose is not None:
-            p = self.latest_goal_pose.pose
-            goal = np.array([
-                p.position.x,
-                p.position.y,
-                p.position.z,
-                p.orientation.x,
-                p.orientation.y,
-                p.orientation.z,
-                p.orientation.w
-            ], dtype=np.float32)
-        else:
-            goal = np.zeros(7, dtype=np.float32)
-            
+
+        # 7 piece pose values
+        piece = self.pose_to_array(self.latest_piece_pose)
+
+        # 7 goal pose values
+        goal = self.pose_to_array(self.latest_goal_pose)
+
+        # 1 gripper value
         gripper = np.array([self.latest_gripper_state], dtype=np.float32)
-        
-        obs = np.concatenate([q, ee_pose, goal, gripper])
+
+        # Total: 6 + 7 + 7 + 7 + 1 = 28
+        obs = np.concatenate([q, ee_pose, piece, goal, gripper])
         return obs
     
     def extract_action(self, cmd_msg):

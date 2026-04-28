@@ -65,31 +65,60 @@ class BCPolicyNode(Node):
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
         self.latest_joint_state = None
+        self.latest_piece_pose = None
         self.latest_goal_pose = None
         self.latest_gripper_state = 0.0
+
         self.joint_names = []
         self.name_to_index = {}
 
         self.sub_js = self.create_subscription(
-            JointState, "/joint_states", self.joint_state_cb, 50
-        )
-        self.sub_goal = self.create_subscription(
-            PoseStamped, "il_goal_pose", self.goal_pose_cb, 10
-        )
-        self.sub_gripper = self.create_subscription(
-            Float32, "/gripper/state", self.gripper_state_cb, 10
+            JointState,
+            "/joint_states",
+            self.joint_state_cb,
+            50,
         )
 
-        self.pub = self.create_publisher(Float64MultiArray, self.cmd_topic, 10)
+        self.sub_piece = self.create_subscription(
+            PoseStamped,
+            "/il_piece_pose",
+            self.piece_pose_cb,
+            10,
+        )
+
+        self.sub_goal = self.create_subscription(
+            PoseStamped,
+            "/il_goal_pose",
+            self.goal_pose_cb,
+            10,
+        )
+
+        self.sub_gripper = self.create_subscription(
+            Float32,
+            "/gripper/state",
+            self.gripper_state_cb,
+            10,
+        )
+
+        self.pub = self.create_publisher(
+            Float64MultiArray,
+            self.cmd_topic,
+            10,
+        )
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model, self.obs_mean, self.obs_std, self.out_dim = self.load_model(self.model_path)
+        self.model, self.obs_mean, self.obs_std, self.out_dim = self.load_model(
+            self.model_path
+        )
 
         period = 1.0 / max(self.rate_hz, 1e-3)
         self.create_timer(period, self.tick)
 
         self.get_logger().info(f"Loaded model: {self.model_path} on {self.device}")
         self.get_logger().info(f"Publishing to: {self.cmd_topic}")
+        self.get_logger().info(
+            "Observation format: q(6) + ee_pose(7) + piece_pose(7) + goal_pose(7) + gripper(1)"
+        )
 
     def load_model(self, path: str):
         if not os.path.exists(path):
@@ -114,10 +143,14 @@ class BCPolicyNode(Node):
 
     def joint_state_cb(self, msg: JointState):
         self.latest_joint_state = msg
+
         if msg.name and not self.joint_names:
             self.joint_names = list(msg.name)
             self.name_to_index = {n: i for i, n in enumerate(self.joint_names)}
             self.get_logger().info("Joint order captured from /joint_states.")
+
+    def piece_pose_cb(self, msg: PoseStamped):
+        self.latest_piece_pose = msg
 
     def goal_pose_cb(self, msg: PoseStamped):
         self.latest_goal_pose = msg
@@ -128,6 +161,7 @@ class BCPolicyNode(Node):
     def get_controlled_joint_positions(self):
         if self.latest_joint_state is None:
             return None
+
         if not self.name_to_index:
             return None
 
@@ -138,6 +172,7 @@ class BCPolicyNode(Node):
                     f"Controlled joint '{name}' not found in /joint_states."
                 )
                 return None
+
             idx = self.name_to_index[name]
             q.append(self.latest_joint_state.position[idx])
 
@@ -151,25 +186,34 @@ class BCPolicyNode(Node):
                 rclpy.time.Time(),
                 timeout=Duration(seconds=0.05),
             )
+
             t = tf_msg.transform.translation
             q = tf_msg.transform.rotation
-            return np.array([t.x, t.y, t.z, q.x, q.y, q.z, q.w], dtype=np.float32)
+
+            return np.array(
+                [
+                    t.x,
+                    t.y,
+                    t.z,
+                    q.x,
+                    q.y,
+                    q.z,
+                    q.w,
+                ],
+                dtype=np.float32,
+            )
+
         except Exception:
             return np.zeros(7, dtype=np.float32)
 
-    def build_observation(self):
-        if self.latest_joint_state is None:
-            return None
+    def pose_to_array(self, pose_msg):
+        if pose_msg is None:
+            return np.zeros(7, dtype=np.float32)
 
-        q = self.get_controlled_joint_positions()
-        if q is None:
-            return None
-            
-        ee = self.lookup_ee_pose()
+        p = pose_msg.pose
 
-        if self.latest_goal_pose is not None:
-            p = self.latest_goal_pose.pose
-            goal = np.array([
+        return np.array(
+            [
                 p.position.x,
                 p.position.y,
                 p.position.z,
@@ -177,19 +221,48 @@ class BCPolicyNode(Node):
                 p.orientation.y,
                 p.orientation.z,
                 p.orientation.w,
-            ], dtype=np.float32)
-        else:
-            goal = np.zeros(7, dtype=np.float32)
+            ],
+            dtype=np.float32,
+        )
 
+    def build_observation(self):
+        if self.latest_joint_state is None:
+            return None
+
+        # 6 controlled arm joint positions
+        q = self.get_controlled_joint_positions()
+        if q is None:
+            return None
+
+        # 7 end-effector pose values
+        ee = self.lookup_ee_pose()
+
+        # 7 checker piece pose values
+        piece = self.pose_to_array(self.latest_piece_pose)
+
+        # 7 target/goal pose values
+        goal = self.pose_to_array(self.latest_goal_pose)
+
+        # 1 gripper state value
         gripper = np.array([self.latest_gripper_state], dtype=np.float32)
 
-        return np.concatenate([q, ee, goal, gripper])
+        # Total observation size:
+        # 6 + 7 + 7 + 7 + 1 = 28
+        return np.concatenate([q, ee, piece, goal, gripper])
 
     def tick(self):
         obs = self.build_observation()
         if obs is None:
             return
+
         if not self.joint_names:
+            return
+
+        if obs.shape[0] != self.obs_mean.shape[0]:
+            self.get_logger().error(
+                f"Observation dim {obs.shape[0]} does not match model input dim {self.obs_mean.shape[0]}. "
+                "You likely need to retrain the model with the updated observation format."
+            )
             return
 
         obs_n = (obs - self.obs_mean) / self.obs_std
@@ -200,10 +273,11 @@ class BCPolicyNode(Node):
 
         if len(y) != len(self.controlled_joints):
             self.get_logger().error(
-                f"Model output dim {len(y)} does not match joint count {len(self.joint_names)}"
+                f"Model output dim {len(y)} does not match controlled joint count {len(self.controlled_joints)}"
             )
             return
 
+        # Basic safety clamp. Replace with real joint limits later if available.
         y = np.clip(y, -6.28, 6.28)
 
         msg = Float64MultiArray()
