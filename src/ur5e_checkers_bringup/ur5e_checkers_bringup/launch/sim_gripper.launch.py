@@ -134,6 +134,7 @@ def generate_launch_description():
             {
                 "model_states_topic": "/checkers/piece_states",
                 "update_hz": 5.0,
+                "starting_turn": "black",
                 "use_sim_time": True,
             }
         ],
@@ -183,6 +184,27 @@ def generate_launch_description():
                 "piece_z": 0.03,
             }
         ],
+    )
+
+    player_move_helper_node = Node(
+        package="ur5e_checkers_bringup",
+        executable="player_move_helper_node",
+        name="player_move_helper_node",
+        output="screen",
+    )
+
+    magic_piece_mover_node = Node(
+        package="ur5e_checkers_bringup",
+        executable="magic_piece_mover_node",
+        name="magic_piece_mover_node",
+        output="screen",
+    )
+
+    checkers_move_ui_node = Node(
+        package="ur5e_checkers_bringup",
+        executable="checkers_move_ui",
+        name="checkers_move_ui",
+        output="screen",
     )
 
     rsp = Node(
@@ -366,11 +388,13 @@ def generate_launch_description():
         checkers_node,
         dqn_policy_node,
         move_target_node,
+        player_move_helper_node,
+        magic_piece_mover_node,
+        checkers_move_ui_node,
         rsp,
         static_tf,
 
         moveit_sim,
-        checkers_node,
 
         TimerAction(period=2.0, actions=[spawn_robot]),
         TimerAction(period=6.0, actions=[spawn_jsb]),
