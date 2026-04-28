@@ -54,6 +54,7 @@ setup(
             "move_target_node = ur5e_checkers_bringup.move_target_node:main",
             "player_move_helper_node = ur5e_checkers_bringup.player_move_helper_node:main",
             "magic_piece_mover_node = ur5e_checkers_bringup.magic_piece_mover_node:main",
+            'checkers_move_ui = ur5e_checkers_bringup.checkers_move_ui:main',
         ],
     },
 )

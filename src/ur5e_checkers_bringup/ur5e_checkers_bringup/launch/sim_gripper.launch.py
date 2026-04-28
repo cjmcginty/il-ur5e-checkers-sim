@@ -157,6 +157,13 @@ def generate_launch_description():
         output="screen",
     )
 
+    checkers_move_ui_node = Node(
+        package="ur5e_checkers_bringup",
+        executable="checkers_move_ui",
+        name="checkers_move_ui",
+        output="screen",
+    )
+
     rsp = Node(
         package="robot_state_publisher",
         executable="robot_state_publisher",
@@ -310,6 +317,7 @@ def generate_launch_description():
         move_target_node,
         player_move_helper_node,
         magic_piece_mover_node,
+        checkers_move_ui_node,
         rsp,
         static_tf,
 
