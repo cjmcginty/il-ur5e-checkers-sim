@@ -52,6 +52,8 @@ setup(
             "checkers_piece_manager = ur5e_checkers_bringup.checkers_piece_manager:main",
             'dqn_policy_node = ur5e_checkers_bringup.dqn_policy_node:main',
             "move_target_node = ur5e_checkers_bringup.move_target_node:main",
+            "player_move_helper_node = ur5e_checkers_bringup.player_move_helper_node:main",
+            "magic_piece_mover_node = ur5e_checkers_bringup.magic_piece_mover_node:main",
         ],
     },
 )

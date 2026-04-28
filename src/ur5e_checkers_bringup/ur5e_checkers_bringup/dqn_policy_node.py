@@ -184,6 +184,11 @@ class DQNPolicyNode(Node):
             return
 
         board.turn = inferred_turn
+        
+        # Human/player is black. Robot/DQN only plays red.
+        if board.turn != "r":
+            self.last_selected_move_str = None
+            return
 
         position_key = self.make_position_key(board, self.latest_legal_move_strings)
 

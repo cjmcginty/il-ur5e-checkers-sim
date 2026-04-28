@@ -151,6 +151,13 @@ class MoveTargetNode(Node):
             10,
         )
 
+        self.player_move_subscription = self.create_subscription(
+            String,
+            "/checkers/selected_player_move",
+            self.selected_player_move_callback,
+            10,
+        )
+
         self.piece_states_subscription = self.create_subscription(
             String,
             self.piece_states_topic,
@@ -161,6 +168,12 @@ class MoveTargetNode(Node):
         self.publisher = self.create_publisher(
             String,
             self.move_target_topic,
+            10,
+        )
+
+        self.player_publisher = self.create_publisher(
+            String,
+            "/checkers/player_move_targets",
             10,
         )
 
@@ -175,6 +188,12 @@ class MoveTargetNode(Node):
             self.get_logger().warning("Failed to parse /checkers/piece_states JSON.")
 
     def selected_move_callback(self, msg: String) -> None:
+        self.publish_move_target(msg, self.publisher)
+
+    def selected_player_move_callback(self, msg: String) -> None:
+        self.publish_move_target(msg, self.player_publisher)
+
+    def publish_move_target(self, msg: String, publisher) -> None:
         move_str = msg.data.strip()
 
         try:
@@ -213,7 +232,7 @@ class MoveTargetNode(Node):
 
         out = String()
         out.data = json.dumps(payload)
-        self.publisher.publish(out)
+        publisher.publish(out)
 
     def parse_move_string(self, move_str: str) -> List[Tuple[int, int]]:
         parts = [part.strip() for part in move_str.split("->")]
