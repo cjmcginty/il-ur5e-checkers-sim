@@ -6,6 +6,8 @@ from typing import List, Optional, Tuple
 
 import rclpy
 from ament_index_python.packages import get_package_share_directory
+from ros_gz_interfaces.msg import Entity
+from ros_gz_interfaces.srv import DeleteEntity
 from rclpy.node import Node
 from std_msgs.msg import String
 
@@ -42,6 +44,10 @@ class CheckersPieceManager(Node):
         )
         self.piece_z = (
             self.get_parameter("piece_z").get_parameter_value().double_value
+        )
+        self.delete_client = self.create_client(
+            DeleteEntity,
+            f"/world/{self.world_name}/remove",
         )
 
         self.square_size = self.board_size / 8.0
@@ -190,10 +196,10 @@ class CheckersPieceManager(Node):
                 continue
 
             if color == "red":
-                if not name.startswith("red_checker_"):
+                if not (name.startswith("red_checker_") or name.startswith("red_king_")):
                     continue
             else:
-                if not name.startswith("black_checker_"):
+                if not (name.startswith("black_checker_") or name.startswith("black_king_")):
                     continue
 
             dist = math.hypot(x - target_x, y - target_y)
@@ -209,18 +215,31 @@ class CheckersPieceManager(Node):
         return x, y
 
     def delete_entity(self, name: str) -> bool:
-        cmd = [
-            "ros2",
-            "run",
-            "ros_gz_sim",
-            "delete_entity",
-            "--name",
-            name,
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            self.get_logger().warning(result.stderr.strip() or result.stdout.strip())
+        if not self.delete_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().warning(
+                f"Delete service /world/{self.world_name}/remove is not available."
+            )
             return False
+
+        request = DeleteEntity.Request()
+        request.entity.name = name
+        request.entity.type = Entity.MODEL
+
+        future = self.delete_client.call_async(request)
+
+        def on_delete_done(fut):
+            try:
+                response = fut.result()
+            except Exception as exc:
+                self.get_logger().warning(f"Delete request for {name} failed: {exc}")
+                return
+
+            if response is not None and response.success:
+                self.get_logger().info(f"Deleted Gazebo entity {name}")
+            else:
+                self.get_logger().warning(f"Gazebo reported failure deleting {name}")
+
+        future.add_done_callback(on_delete_done)
         return True
 
     def spawn_entity(self, name: str, sdf_file: str, x: float, y: float, z: float) -> bool:

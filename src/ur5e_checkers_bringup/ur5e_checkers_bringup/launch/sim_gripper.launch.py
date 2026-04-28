@@ -130,6 +130,46 @@ def generate_launch_description():
             {
                 "robot_description": robot_description,
                 "use_sim_time": True
+              
+    delete_entity_bridge = Node(
+        package="ros_gz_bridge",
+        executable="parameter_bridge",
+        name="delete_entity_bridge",
+        arguments=[
+            "/world/checkers_world/remove@ros_gz_interfaces/srv/DeleteEntity"
+        ],
+        output="screen",
+    )
+
+    checkers_node = Node(
+        package="ur5e_checkers_bringup",
+        executable="checkers_game_node",
+        output="screen",
+        parameters=[
+            {
+                "model_states_topic": "/checkers/piece_states",
+                "update_hz": 5.0,
+                "starting_turn": "black",
+                "use_sim_time": True,
+            }
+        ],
+    )
+
+    checkers_piece_manager_node = Node(
+        package="ur5e_checkers_bringup",
+        executable="checkers_piece_manager",
+        name="checkers_piece_manager",
+        output="screen",
+        parameters=[
+            {
+                "game_event_topic": "/checkers/game_event",
+                "piece_states_topic": "/checkers/piece_states",
+                "world_name": "checkers_world",
+                "board_center_x": 0.6,
+                "board_center_y": 0.0,
+                "board_size": 0.40,
+                "piece_z": 0.03,
+                "use_sim_time": True,
             }
         ],
         output="screen"
@@ -199,6 +239,33 @@ def generate_launch_description():
         executable="move_targets_to_il_pose",
         name="move_targets_to_il_pose",
         output="screen",
+    )
+
+    player_move_helper_node = Node(
+        package="ur5e_checkers_bringup",
+        executable="player_move_helper_node",
+        name="player_move_helper_node",
+        output="screen",
+    )
+
+    magic_piece_mover_node = Node(
+        package="ur5e_checkers_bringup",
+        executable="magic_piece_mover_node",
+        name="magic_piece_mover_node",
+        output="screen",
+    )
+
+    checkers_move_ui_node = Node(
+        package="ur5e_checkers_bringup",
+        executable="checkers_move_ui",
+        name="checkers_move_ui",
+        output="screen",
+    )
+
+    rsp = Node(
+        package="robot_state_publisher",
+        executable="robot_state_publisher",
+
         parameters=[
             {
                 "frame_id": "base_link",
@@ -355,6 +422,14 @@ def generate_launch_description():
         gz,
         clock_bridge,
         pose_bridge,
+        delete_entity_bridge,
+        checkers_node,
+        checkers_piece_manager_node,
+        dqn_policy_node,
+        move_target_node,
+        player_move_helper_node,
+        magic_piece_mover_node,
+        checkers_move_ui_node,
         rsp,
         static_tf,
         moveit_sim,

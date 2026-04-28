@@ -76,7 +76,7 @@ class CheckersGameNode(Node):
         # Internal state
         # ---------------------------
         self.board = CheckersBoard()
-        self.board.turn = "r" if self.starting_turn == "red" else "b"
+        self.board.turn = "b" if self.starting_turn == "black" else "r"
 
         self.latest_model_states: Optional[List[dict]] = None
         self.prev_board_signature: Optional[Tuple[Tuple[str, ...], ...]] = None
@@ -299,9 +299,6 @@ class CheckersGameNode(Node):
                 "Syncing board directly from simulation."
             )
             self.board.board = self.merge_detected_board_with_internal_kings(detected_board)
-            self.flip_turn()
-
-
 
         self.prev_board_signature = self.board_signature(self.board.board)
 

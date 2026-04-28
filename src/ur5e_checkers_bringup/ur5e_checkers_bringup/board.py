@@ -42,8 +42,8 @@ class CheckersBoard:
         # create empty 8x8 board
         self.board: List[List[str]] = [["." for _ in range(8)] for _ in range(8)]
 
-        # optional red always moves first
-        self.turn: str = "r"
+        # black always moves first
+        self.turn: str = "b"
 
         # captured counters
         self.red_captured: int = 0
