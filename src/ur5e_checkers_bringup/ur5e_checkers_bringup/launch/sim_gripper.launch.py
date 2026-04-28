@@ -38,7 +38,6 @@ def generate_launch_description():
         " tf_prefix:="
     ])
 
-    # Make sure Gazebo can find custom plugins
     plugin_path = PathJoinSubstitution([
         FindPackageShare("checkers_gz_plugins"),
         "..",
@@ -73,7 +72,6 @@ def generate_launch_description():
         ]
     )
 
-    # Launch Gazebo
     gz = ExecuteProcess(
         cmd=[
             "gz", "sim",
@@ -91,7 +89,6 @@ def generate_launch_description():
         output="screen"
     )
 
-    # Include MoveIt/Servo launch
     moveit_sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([
@@ -126,6 +123,14 @@ def generate_launch_description():
         output="screen",
     )
 
+    rsp = Node(
+        package="robot_state_publisher",
+        executable="robot_state_publisher",
+        parameters=[
+            {
+                "robot_description": robot_description,
+                "use_sim_time": True
+              
     delete_entity_bridge = Node(
         package="ros_gz_bridge",
         executable="parameter_bridge",
@@ -167,14 +172,25 @@ def generate_launch_description():
                 "use_sim_time": True,
             }
         ],
+        output="screen"
     )
 
-    data_collection_node = Node(
-        package="data_collection",
-        executable="data_collection_node",
+    static_tf = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        arguments=["0", "0", "0", "0", "0", "0", "world", "base_link"],
+        output="screen"
+    )
+
+    checkers_node = Node(
+        package="ur5e_checkers_bringup",
+        executable="checkers_game_node",
+        name="checkers_game_node",
         output="screen",
         parameters=[
             {
+                "model_states_topic": "/checkers/piece_states",
+                "update_hz": 5.0,
                 "use_sim_time": True,
             }
         ],
@@ -183,6 +199,7 @@ def generate_launch_description():
     dqn_policy_node = Node(
         package="ur5e_checkers_bringup",
         executable="dqn_policy_node",
+        name="dqn_policy_node",
         output="screen",
         parameters=[
             {
@@ -193,6 +210,7 @@ def generate_launch_description():
                 "device": "auto",
                 "publish_once_per_position": True,
                 "republish_hz": 2.0,
+                "use_sim_time": True,
             }
         ],
     )
@@ -211,8 +229,16 @@ def generate_launch_description():
                 "board_center_y": 0.0,
                 "board_size": 0.40,
                 "piece_z": 0.03,
+                "use_sim_time": True,
             }
         ],
+    )
+
+    move_targets_to_il_pose = Node(
+        package="data_collection",
+        executable="move_targets_to_il_pose",
+        name="move_targets_to_il_pose",
+        output="screen",
     )
 
     player_move_helper_node = Node(
@@ -239,20 +265,25 @@ def generate_launch_description():
     rsp = Node(
         package="robot_state_publisher",
         executable="robot_state_publisher",
+
         parameters=[
             {
-                "robot_description": robot_description,
-                "use_sim_time": True
+                "frame_id": "base_link",
+                "use_sim_time": True,
             }
         ],
-        output="screen"
     )
 
-    static_tf = Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        arguments=["0", "0", "0", "0", "0", "0", "world", "base_link"],
-        output="screen"
+    data_collection_node = Node(
+        package="data_collection",
+        executable="data_collection_node",
+        name="data_collection_node",
+        output="screen",
+        parameters=[
+            {
+                "use_sim_time": True,
+            }
+        ],
     )
 
     spawn_robot = ExecuteProcess(
@@ -325,27 +356,6 @@ def generate_launch_description():
         output="screen"
     )
 
-    # Optional: launch teleop in a separate terminal window.
-    # Uncomment this if you want the launch file to open teleop automatically.
-    # This usually works better than launching teleop directly inside the same terminal.
-    #
-    # teleop_node = ExecuteProcess(
-    #     cmd=[
-    #         "gnome-terminal", "--", "bash", "-c",
-    #         (
-    #             "ros2 run teleop_twist_keyboard teleop_twist_keyboard "
-    #             "--ros-args "
-    #             "-p stamped:=true "
-    #             "-p frame_id:=base_link "
-    #             "-p use_sim_time:=true "
-    #             "--remap cmd_vel:=/servo_node/delta_twist_cmds; "
-    #             "exec bash"
-    #         )
-    #     ],
-    #     output="screen"
-    # )
-
-    # Board geometry assumptions
     board_center_x = 0.6
     board_center_y = 0.0
     board_size = 0.40
@@ -355,7 +365,6 @@ def generate_launch_description():
     red_spawns = []
     black_spawns = []
 
-    # Red pieces: top 3 rows
     red_count = 1
     for row in range(3):
         y = board_center_y + (board_size / 2.0) - (row + 0.5) * square
@@ -378,7 +387,6 @@ def generate_launch_description():
                 )
                 red_count += 1
 
-    # Black pieces: bottom 3 rows
     black_count = 1
     for row in range(5, 8):
         y = board_center_y + (board_size / 2.0) - (row + 0.5) * square
@@ -432,16 +440,18 @@ def generate_launch_description():
         TimerAction(period=7.5, actions=[spawn_gripper]),
         TimerAction(period=8.5, actions=[set_start_pose]),
 
-        # Let servo come up before switching command mode
         TimerAction(period=10.0, actions=[servo_command_type]),
-
-        # Start data collection after the rest of the system is up
-        TimerAction(period=10.5, actions=[data_collection_node]),
 
         TimerAction(period=11.0, actions=[board_spawn]),
         TimerAction(period=12.0, actions=red_spawns),
         TimerAction(period=13.0, actions=black_spawns),
 
-        # Optional teleop startup
-        # TimerAction(period=14.0, actions=[teleop_node]),
+        # Start checkers/DQN logic only after board and pieces exist
+        TimerAction(period=15.0, actions=[checkers_node]),
+        TimerAction(period=16.0, actions=[dqn_policy_node]),
+        TimerAction(period=17.0, actions=[move_target_node]),
+        TimerAction(period=17.5, actions=[move_targets_to_il_pose]),
+
+        # Start data collection after the system is fully up
+        TimerAction(period=18.0, actions=[data_collection_node]),
     ])
