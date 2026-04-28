@@ -1,9 +1,10 @@
-from typing import Iterable, List
+import copy
 
 import torch
 
-from ur5e_checkers_bringup.board import CheckersBoard, Move, MoveLike, MoveSequence
+from typing import Iterable, List, Tuple
 
+from ur5e_checkers_bringup.board import CheckersBoard, Move, MoveLike, MoveSequence
 
 def encode_board(board: CheckersBoard) -> torch.Tensor:
     """
@@ -39,6 +40,63 @@ def encode_board(board: CheckersBoard) -> torch.Tensor:
     return state
 
 
+def _swap_piece_colors(piece: str) -> str:
+    if piece == "r":
+        return "b"
+    if piece == "R":
+        return "B"
+    if piece == "b":
+        return "r"
+    if piece == "B":
+        return "R"
+    return piece
+
+
+def canonicalize_coord(coord: tuple[int, int]) -> tuple[int, int]:
+    """Rotate a board coordinate 180 degrees."""
+    return (7 - coord[0], 7 - coord[1])
+
+
+def canonicalize_move_key_for_player(move_key: tuple, player: str) -> tuple:
+    """
+    Convert a move key into the fixed training perspective.
+
+    - Red keeps its coordinates as-is
+    - Black is rotated 180 degrees so it looks like the same side-to-move convention
+    """
+    if player == "r":
+        return move_key
+    if player == "b":
+        return tuple(canonicalize_coord(coord) for coord in move_key)
+    raise ValueError(f"Invalid player: {player}")
+
+
+def canonicalize_board(board: CheckersBoard) -> CheckersBoard:
+    """
+    Return a board from a fixed learning perspective where the side to move
+    is always represented as red.
+    """
+    if board.turn == "r":
+        return copy.deepcopy(board)
+
+    canonical = copy.deepcopy(board)
+    rotated = [["." for _ in range(8)] for _ in range(8)]
+
+    for r in range(8):
+        for c in range(8):
+            rotated[7 - r][7 - c] = _swap_piece_colors(board.board[r][c])
+
+    canonical.board = rotated
+    canonical.turn = "r"
+    canonical.red_captured = board.black_captured
+    canonical.black_captured = board.red_captured
+    return canonical
+
+
+def encode_canonical_board(board: CheckersBoard) -> torch.Tensor:
+    """Encode the board after normalizing to the fixed learning perspective."""
+    return encode_board(canonicalize_board(board))
+
 def move_to_key(move: MoveLike) -> tuple:
     """
     Convert a Move or MoveSequence into a hashable tuple key.
@@ -68,6 +126,19 @@ def key_to_move(key: tuple) -> MoveLike:
 
     raise ValueError(f"Invalid move key: {key}")
 
+def is_reverse_move(current_key: tuple, previous_key: tuple | None) -> bool:
+    """
+    Return True if the current move is the exact reverse of the previous move.
+
+    Examples:
+        previous: ((7, 6), (6, 7))
+        current:  ((6, 7), (7, 6))
+    """
+    if previous_key is None:
+        return False
+
+    return current_key == tuple(reversed(previous_key))
+
 
 def legal_move_keys(board: CheckersBoard) -> List[tuple]:
     """
@@ -81,11 +152,14 @@ def reward_for_move(
     board_after: CheckersBoard,
     player: str,
     winner: str | None = None,
-    step_penalty: float = -0.01,
+    step_penalty: float = -0.03,
     capture_reward: float = 0.20,
     king_reward: float = 0.10,
     win_reward: float = 1.00,
     loss_reward: float = -1.00,
+    repeated_move_penalty: float = -0.10,
+    current_move_key: tuple | None = None,
+    previous_move_key: tuple | None = None,
 ) -> float:
     """
     Compute a simple DQN reward from a transition.
@@ -121,6 +195,9 @@ def reward_for_move(
     king_delta = own_king_after - own_king_before
     if king_delta > 0:
         reward += king_reward * king_delta
+    
+    if is_reverse_move(current_move_key, previous_move_key):
+        reward += repeated_move_penalty
 
     if winner is not None:
         if winner == player:
@@ -163,3 +240,46 @@ def epsilon_greedy_index(
     masked_q = torch.full_like(q_values, -1e9)
     masked_q[legal_indices] = q_values[legal_indices]
     return int(torch.argmax(masked_q).item())
+
+def legal_moves(board: CheckersBoard) -> List[MoveLike]:
+    """
+    Return actual legal move objects from the board.
+    """
+    return board.legal_moves()
+
+
+def legal_moves_with_keys(board: CheckersBoard) -> List[Tuple[MoveLike, tuple]]:
+    """
+    Returns:
+        [(move, key), ...]
+    """
+    moves = board.legal_moves()
+    return [(m, move_to_key(m)) for m in moves]
+
+
+def legal_moves_with_indices(board: CheckersBoard):
+    """
+    Returns:
+        List of (move, key, index)
+    """
+    from ur5e_checkers_bringup.dqn_action_space import action_key_to_index
+
+    legal = board.legal_moves()
+    triplets = []
+
+    for move in legal:
+        key = canonicalize_move_key_for_player(move_to_key(move), board.turn)
+
+        try:
+            idx = action_key_to_index(key)
+        except KeyError:
+            raise RuntimeError(
+                f"\nDQN ACTION SPACE FAILURE\n"
+                f"Legal move not found in action space:\n{key}\n\n"
+                f"This means dqn_action_space is incomplete.\n"
+                f"Fix the generator before training.\n"
+            )
+
+        triplets.append((move, key, idx))
+
+    return triplets

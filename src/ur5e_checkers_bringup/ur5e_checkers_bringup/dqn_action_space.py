@@ -1,7 +1,7 @@
 from typing import Dict, List, Tuple
 
-from ur5e_checkers_bringup.board import CheckersBoard, MoveLike
-from ur5e_checkers_bringup.dqn_utils import legal_move_keys, move_to_key
+from ur5e_checkers_bringup.board import CheckersBoard
+from ur5e_checkers_bringup.dqn_utils import move_to_key
 
 Coord = Tuple[int, int]
 ActionKey = Tuple[Coord, ...]
@@ -15,22 +15,24 @@ def _playable_square(r: int, c: int) -> bool:
     return (r + c) % 2 == 1
 
 
-def _generate_simple_and_single_jump_actions() -> List[ActionKey]:
-    """
-    Generate a fixed action space containing all:
-    - 1-step diagonal moves
-    - 1-jump diagonal captures
+def _jumped_square(a: Coord, b: Coord) -> Coord:
+    """Return the square jumped over between a -> b"""
+    return ((a[0] + b[0]) // 2, (a[1] + b[1]) // 2)
 
-    Each action is represented as a path-like tuple:
-        ((r0, c0), (r1, c1))
 
-    This does NOT enumerate full multi-jump sequences.
-    Those will be handled by board legal-move logic later if needed.
+def _generate_all_action_keys(max_depth: int = 10) -> List[ActionKey]:
     """
+    Generate a fixed action space containing:
+    - simple diagonal moves
+    - all multi-jump capture paths
+
+    IMPORTANT:
+    - We DO NOT forbid revisiting landing squares (kings can legally do this)
+    - We DO forbid reusing the SAME jumped-over square (prevents infinite loops)
+    """
+
+    directions = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
     actions = set()
-
-    step_deltas = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
-    jump_deltas = [(-2, -2), (-2, 2), (2, -2), (2, 2)]
 
     for r in range(8):
         for c in range(8):
@@ -39,55 +41,81 @@ def _generate_simple_and_single_jump_actions() -> List[ActionKey]:
 
             start = (r, c)
 
-            for dr, dc in step_deltas:
-                r1 = r + dr
-                c1 = c + dc
-                if _on_board(r1, c1) and _playable_square(r1, c1):
-                    actions.add((start, (r1, c1)))
+            # --- Simple moves ---
+            for dr, dc in directions:
+                nr, nc = r + dr, c + dc
+                if _on_board(nr, nc) and _playable_square(nr, nc):
+                    actions.add((start, (nr, nc)))
 
-            for dr, dc in jump_deltas:
-                r2 = r + dr
-                c2 = c + dc
-                if _on_board(r2, c2) and _playable_square(r2, c2):
-                    actions.add((start, (r2, c2)))
+            # --- Multi-jump generation ---
+            def dfs(path: List[Coord], used_jumps: set):
+                last = path[-1]
+
+                if len(path) > 1:
+                    actions.add(tuple(path))
+
+                if len(path) >= max_depth:
+                    return
+
+                for dr, dc in directions:
+                    mid = (last[0] + dr, last[1] + dc)
+                    land = (last[0] + 2 * dr, last[1] + 2 * dc)
+
+                    if not _on_board(*land):
+                        continue
+                    if not _playable_square(*land):
+                        continue
+
+                    jump_sq = mid
+
+                    # 🚨 FIX: prevent reusing SAME captured square (not landing square)
+                    if jump_sq in used_jumps:
+                        continue
+
+                    dfs(
+                        path + [land],
+                        used_jumps | {jump_sq},
+                    )
+
+            dfs([start], set())
 
     return sorted(actions)
 
 
+# Build fixed action space
+_ALL_ACTION_KEYS: List[ActionKey] = _generate_all_action_keys()
+_ACTION_TO_INDEX: Dict[ActionKey, int] = {
+    key: i for i, key in enumerate(_ALL_ACTION_KEYS)
+}
+
+
 def num_actions() -> int:
-    raise NotImplementedError("Fixed action space no longer used.")
+    return len(_ALL_ACTION_KEYS)
 
 
-def action_key_to_index(action_key: ActionKey) -> int:
-    raise NotImplementedError("Fixed action space no longer used.")
+def action_key_to_index(key: ActionKey) -> int:
+    if key not in _ACTION_TO_INDEX:
+        raise KeyError(
+            f"Action key not in fixed action space: {key}\n"
+            f"This means your action space is STILL incomplete."
+        )
+    return _ACTION_TO_INDEX[key]
 
 
 def index_to_action_key(index: int) -> ActionKey:
-    raise NotImplementedError("Fixed action space no longer used.")
+    return _ALL_ACTION_KEYS[index]
 
 
-def move_to_action_key(move: MoveLike) -> ActionKey:
+def validate_action_space_on_board(board: CheckersBoard) -> None:
     """
-    Convert a legal move object from board.py into a fixed DQN action index.
-
-    For now, only supports 2-point moves:
-    - normal moves
-    - single captures
-
-    Full multi-jump capture sequences will need an expanded action space later.
+    Debug helper:
+    Verifies ALL legal board moves exist in the fixed action space.
     """
-    return move_to_key(move)
-
-
-def legal_action_keys(board: CheckersBoard) -> List[ActionKey]:
-    """
-    Return the currently legal action indices for this board.
-
-    For now, this only works when every legal move is a 2-point action.
-    If the position contains multi-jump legal moves, this function raises.
-    """
-    return list(legal_move_keys(board))
-
-
-def debug_print_action_space_summary() -> None:
-    print("Fixed action space no longer used.")
+    legal = board.legal_moves()
+    for move in legal:
+        key = move_to_key(move)
+        if key not in _ACTION_TO_INDEX:
+            raise RuntimeError(
+                f"Missing action for legal move: {key}\n"
+                f"Action space is incomplete."
+            )

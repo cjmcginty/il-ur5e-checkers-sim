@@ -175,10 +175,18 @@ class CheckersGameNode(Node):
 
         pending_changed = set(previous_pending) != set(self.pending_removed_squares)
 
-        # Only skip update if BOTH:
+        # Only skip board-processing if BOTH:
         # - board hasn't changed
         # - and no cleanup just completed
+        # But keep publishing the current state every timer tick.
         if detected_signature == self.prev_board_signature and not pending_changed:
+            if self.have_seen_initial_board:
+                board_text = self.format_board(self.board.board)
+                legal_moves = self.board.legal_moves()
+                legal_move_strings = [self.move_to_string(move) for move in legal_moves]
+
+                self.publish_board_state(board_text)
+                self.publish_legal_moves(legal_move_strings)
             return
         
 
