@@ -1,6 +1,18 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, TimerAction, SetEnvironmentVariable
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, Command, EnvironmentVariable
+from launch.actions import (
+    DeclareLaunchArgument,
+    ExecuteProcess,
+    TimerAction,
+    SetEnvironmentVariable,
+    IncludeLaunchDescription,
+)
+from launch.substitutions import (
+    LaunchConfiguration,
+    PathJoinSubstitution,
+    Command,
+    EnvironmentVariable,
+)
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
@@ -26,7 +38,7 @@ def generate_launch_description():
         " tf_prefix:="
     ])
 
-    # make sure Gazebo can find custom plugins
+    # Make sure Gazebo can find custom plugins
     plugin_path = PathJoinSubstitution([
         FindPackageShare("checkers_gz_plugins"),
         "..",
@@ -61,7 +73,7 @@ def generate_launch_description():
         ]
     )
 
-    # Launch Gazebo directly since this path worked in manual testing
+    # Launch Gazebo
     gz = ExecuteProcess(
         cmd=[
             "gz", "sim",
@@ -79,9 +91,27 @@ def generate_launch_description():
         output="screen"
     )
 
+    # Include MoveIt/Servo launch
+    moveit_sim = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([
+                FindPackageShare("ur5e_checkers_bringup"),
+                "launch",
+                "ur_moveit_sim.launch.py"
+            ])
+        ),
+        launch_arguments={
+            "ur_type": "ur5e",
+            "use_sim_time": "true",
+            "launch_rviz": "false",
+            "launch_servo": "true",
+        }.items()
+    )
+
     clock_bridge = Node(
         package="ros_gz_bridge",
         executable="parameter_bridge",
+        name="clock_bridge",
         arguments=["/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"],
         output="screen"
     )
@@ -89,6 +119,7 @@ def generate_launch_description():
     pose_bridge = Node(
         package="ros_gz_bridge",
         executable="parameter_bridge",
+        name="pose_bridge",
         arguments=[
             "/world/checkers_world/dynamic_pose/info@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V"
         ],
@@ -103,6 +134,18 @@ def generate_launch_description():
             {
                 "model_states_topic": "/checkers/piece_states",
                 "update_hz": 5.0,
+                "use_sim_time": True,
+            }
+        ],
+    )
+
+    data_collection_node = Node(
+        package="data_collection",
+        executable="data_collection_node",
+        output="screen",
+        parameters=[
+            {
+                "use_sim_time": True,
             }
         ],
     )
@@ -208,6 +251,16 @@ def generate_launch_description():
         output="screen"
     )
 
+    servo_command_type = ExecuteProcess(
+        cmd=[
+            "ros2", "service", "call",
+            "/servo_node/switch_command_type",
+            "moveit_msgs/srv/ServoCommandType",
+            "{command_type: 1}"
+        ],
+        output="screen"
+    )
+
     board_spawn = ExecuteProcess(
         cmd=[
             "ros2", "run", "ros_gz_sim", "create",
@@ -220,6 +273,26 @@ def generate_launch_description():
         ],
         output="screen"
     )
+
+    # Optional: launch teleop in a separate terminal window.
+    # Uncomment this if you want the launch file to open teleop automatically.
+    # This usually works better than launching teleop directly inside the same terminal.
+    #
+    # teleop_node = ExecuteProcess(
+    #     cmd=[
+    #         "gnome-terminal", "--", "bash", "-c",
+    #         (
+    #             "ros2 run teleop_twist_keyboard teleop_twist_keyboard "
+    #             "--ros-args "
+    #             "-p stamped:=true "
+    #             "-p frame_id:=base_link "
+    #             "-p use_sim_time:=true "
+    #             "--remap cmd_vel:=/servo_node/delta_twist_cmds; "
+    #             "exec bash"
+    #         )
+    #     ],
+    #     output="screen"
+    # )
 
     # Board geometry assumptions
     board_center_x = 0.6
@@ -277,7 +350,6 @@ def generate_launch_description():
                 )
                 black_count += 1
 
-
     return LaunchDescription([
         DeclareLaunchArgument(
             "spawn_board",
@@ -287,6 +359,7 @@ def generate_launch_description():
 
         set_plugin_path,
         set_resource_path,
+
         gz,
         clock_bridge,
         pose_bridge,
@@ -296,12 +369,25 @@ def generate_launch_description():
         rsp,
         static_tf,
 
+        moveit_sim,
+        checkers_node,
+
         TimerAction(period=2.0, actions=[spawn_robot]),
         TimerAction(period=6.0, actions=[spawn_jsb]),
         TimerAction(period=7.0, actions=[spawn_traj]),
         TimerAction(period=7.5, actions=[spawn_gripper]),
         TimerAction(period=8.5, actions=[set_start_pose]),
+
+        # Let servo come up before switching command mode
+        TimerAction(period=10.0, actions=[servo_command_type]),
+
+        # Start data collection after the rest of the system is up
+        TimerAction(period=10.5, actions=[data_collection_node]),
+
         TimerAction(period=11.0, actions=[board_spawn]),
         TimerAction(period=12.0, actions=red_spawns),
         TimerAction(period=13.0, actions=black_spawns),
+
+        # Optional teleop startup
+        # TimerAction(period=14.0, actions=[teleop_node]),
     ])
