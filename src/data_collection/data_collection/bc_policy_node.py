@@ -124,7 +124,7 @@ class BCPolicyNode(Node):
         if not os.path.exists(path):
             raise FileNotFoundError(f"model_path not found: {path}")
 
-        ckpt = torch.load(path, map_location="cpu")
+        ckpt = torch.load(path, map_location="cpu", weights_only=False)
         in_dim = int(ckpt["in_dim"])
         out_dim = int(ckpt["out_dim"])
         hidden = int(ckpt["hidden"])
