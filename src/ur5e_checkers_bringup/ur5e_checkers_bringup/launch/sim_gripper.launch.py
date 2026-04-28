@@ -79,13 +79,6 @@ def generate_launch_description():
             "-v", "4",
             world_path
         ],
-        additional_env={
-            "GZ_SIM_SYSTEM_PLUGIN_PATH": [
-                plugin_path,
-                ":",
-                EnvironmentVariable("GZ_SIM_SYSTEM_PLUGIN_PATH", default_value="")
-            ]
-        },
         output="screen"
     )
 
@@ -123,14 +116,6 @@ def generate_launch_description():
         output="screen",
     )
 
-    rsp = Node(
-        package="robot_state_publisher",
-        executable="robot_state_publisher",
-        parameters=[
-            {
-                "robot_description": robot_description,
-                "use_sim_time": True
-              
     delete_entity_bridge = Node(
         package="ros_gz_bridge",
         executable="parameter_bridge",
@@ -141,9 +126,30 @@ def generate_launch_description():
         output="screen",
     )
 
+    rsp = Node(
+        package="robot_state_publisher",
+        executable="robot_state_publisher",
+        name="robot_state_publisher",
+        parameters=[
+            {
+                "robot_description": robot_description,
+                "use_sim_time": True,
+            }
+        ],
+        output="screen",
+    )
+
+    static_tf = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        arguments=["0", "0", "0", "0", "0", "0", "world", "base_link"],
+        output="screen"
+    )
+
     checkers_node = Node(
         package="ur5e_checkers_bringup",
         executable="checkers_game_node",
+        name="checkers_game_node",
         output="screen",
         parameters=[
             {
@@ -169,28 +175,6 @@ def generate_launch_description():
                 "board_center_y": 0.0,
                 "board_size": 0.40,
                 "piece_z": 0.03,
-                "use_sim_time": True,
-            }
-        ],
-        output="screen"
-    )
-
-    static_tf = Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        arguments=["0", "0", "0", "0", "0", "0", "world", "base_link"],
-        output="screen"
-    )
-
-    checkers_node = Node(
-        package="ur5e_checkers_bringup",
-        executable="checkers_game_node",
-        name="checkers_game_node",
-        output="screen",
-        parameters=[
-            {
-                "model_states_topic": "/checkers/piece_states",
-                "update_hz": 5.0,
                 "use_sim_time": True,
             }
         ],
@@ -239,6 +223,7 @@ def generate_launch_description():
         executable="move_targets_to_il_pose",
         name="move_targets_to_il_pose",
         output="screen",
+        parameters=[{"use_sim_time": True}],
     )
 
     player_move_helper_node = Node(
@@ -246,6 +231,7 @@ def generate_launch_description():
         executable="player_move_helper_node",
         name="player_move_helper_node",
         output="screen",
+        parameters=[{"use_sim_time": True}],
     )
 
     magic_piece_mover_node = Node(
@@ -253,6 +239,7 @@ def generate_launch_description():
         executable="magic_piece_mover_node",
         name="magic_piece_mover_node",
         output="screen",
+        parameters=[{"use_sim_time": True}],
     )
 
     checkers_move_ui_node = Node(
@@ -260,18 +247,7 @@ def generate_launch_description():
         executable="checkers_move_ui",
         name="checkers_move_ui",
         output="screen",
-    )
-
-    rsp = Node(
-        package="robot_state_publisher",
-        executable="robot_state_publisher",
-
-        parameters=[
-            {
-                "frame_id": "base_link",
-                "use_sim_time": True,
-            }
-        ],
+        parameters=[{"use_sim_time": True}],
     )
 
     data_collection_node = Node(
@@ -279,11 +255,7 @@ def generate_launch_description():
         executable="data_collection_node",
         name="data_collection_node",
         output="screen",
-        parameters=[
-            {
-                "use_sim_time": True,
-            }
-        ],
+        parameters=[{"use_sim_time": True}],
     )
 
     spawn_robot = ExecuteProcess(
@@ -338,7 +310,7 @@ def generate_launch_description():
             "ros2", "service", "call",
             "/servo_node/switch_command_type",
             "moveit_msgs/srv/ServoCommandType",
-            "{command_type: 1}"
+            "{command_type: 2}"
         ],
         output="screen"
     )
@@ -423,13 +395,7 @@ def generate_launch_description():
         clock_bridge,
         pose_bridge,
         delete_entity_bridge,
-        checkers_node,
-        checkers_piece_manager_node,
-        dqn_policy_node,
-        move_target_node,
-        player_move_helper_node,
-        magic_piece_mover_node,
-        checkers_move_ui_node,
+
         rsp,
         static_tf,
         moveit_sim,
@@ -439,19 +405,21 @@ def generate_launch_description():
         TimerAction(period=7.0, actions=[spawn_traj]),
         TimerAction(period=7.5, actions=[spawn_gripper]),
         TimerAction(period=8.5, actions=[set_start_pose]),
-
         TimerAction(period=10.0, actions=[servo_command_type]),
 
         TimerAction(period=11.0, actions=[board_spawn]),
         TimerAction(period=12.0, actions=red_spawns),
         TimerAction(period=13.0, actions=black_spawns),
 
-        # Start checkers/DQN logic only after board and pieces exist
+        TimerAction(period=14.0, actions=[checkers_piece_manager_node]),
         TimerAction(period=15.0, actions=[checkers_node]),
         TimerAction(period=16.0, actions=[dqn_policy_node]),
         TimerAction(period=17.0, actions=[move_target_node]),
         TimerAction(period=17.5, actions=[move_targets_to_il_pose]),
 
-        # Start data collection after the system is fully up
-        TimerAction(period=18.0, actions=[data_collection_node]),
+        TimerAction(period=18.0, actions=[player_move_helper_node]),
+        TimerAction(period=18.5, actions=[magic_piece_mover_node]),
+        TimerAction(period=19.0, actions=[checkers_move_ui_node]),
+
+        TimerAction(period=20.0, actions=[data_collection_node]),
     ])
