@@ -368,9 +368,7 @@ def generate_launch_description():
         move_target_node,
         rsp,
         static_tf,
-
         moveit_sim,
-        checkers_node,
 
         TimerAction(period=2.0, actions=[spawn_robot]),
         TimerAction(period=6.0, actions=[spawn_jsb]),
