@@ -9,8 +9,8 @@ from rclpy.duration import Duration
 from rclpy.action import ActionClient
 
 from geometry_msgs.msg import PoseStamped
-from geometry_msgs.msg import Quaternion
 from control_msgs.action import GripperCommand
+from std_msgs.msg import String
 
 import tf2_ros
 
@@ -22,6 +22,7 @@ class PickPlaceExecutorNode(Node):
         self.declare_parameter("base_frame", "base_link")
         self.declare_parameter("ee_frame", "tool0")
         self.declare_parameter("pose_cmd_topic", "/servo_node/pose_target_cmds")
+        self.declare_parameter("robot_move_done_topic", "/checkers/robot_move_done")
         self.declare_parameter(
             "gripper_action_name",
             "/gripper_position_controller/gripper_cmd",
@@ -33,7 +34,7 @@ class PickPlaceExecutorNode(Node):
         self.declare_parameter("open_gripper_value", 0.0)
         self.declare_parameter("closed_gripper_value", 0.79)
         self.declare_parameter("gripper_max_effort", 50.0)
-        self.declare_parameter("gripper_wait_ticks", 50)
+        self.declare_parameter("gripper_wait_ticks", 10)
 
         self.declare_parameter("above_height", 0.25)
         self.declare_parameter("grasp_height", 0.18)
@@ -44,6 +45,7 @@ class PickPlaceExecutorNode(Node):
         self.base_frame = self.get_parameter("base_frame").value
         self.ee_frame = self.get_parameter("ee_frame").value
         self.pose_cmd_topic = self.get_parameter("pose_cmd_topic").value
+        self.robot_move_done_topic = self.get_parameter("robot_move_done_topic").value
         self.gripper_action_name = self.get_parameter("gripper_action_name").value
 
         self.position_tolerance = float(self.get_parameter("position_tolerance").value)
@@ -71,7 +73,6 @@ class PickPlaceExecutorNode(Node):
         self.gripper_goal_done = False
         self.last_pose_target = None
 
-        # This orientation is captured once and then reused for every target.
         self.locked_orientation = None
 
         self.tf_buffer = tf2_ros.Buffer(cache_time=Duration(seconds=10.0))
@@ -97,6 +98,12 @@ class PickPlaceExecutorNode(Node):
             10,
         )
 
+        self.robot_move_done_pub = self.create_publisher(
+            String,
+            self.robot_move_done_topic,
+            10,
+        )
+
         self.gripper_client = ActionClient(
             self,
             GripperCommand,
@@ -108,6 +115,7 @@ class PickPlaceExecutorNode(Node):
 
         self.get_logger().info("Pick-place executor node ready.")
         self.get_logger().info(f"Publishing pose targets to: {self.pose_cmd_topic}")
+        self.get_logger().info(f"Publishing robot move done to: {self.robot_move_done_topic}")
         self.get_logger().info(f"Sending gripper actions to: {self.gripper_action_name}")
 
     def piece_pose_cb(self, msg: PoseStamped):
@@ -321,6 +329,12 @@ class PickPlaceExecutorNode(Node):
         self.gripper_goal_active = False
         self.gripper_goal_done = True
 
+    def publish_robot_move_done(self):
+        msg = String()
+        msg.data = "done"
+        self.robot_move_done_pub.publish(msg)
+        self.get_logger().info("Published robot move done.")
+
     def advance_phase(self):
         self.phase_index += 1
         self.wait_count = 0
@@ -330,6 +344,9 @@ class PickPlaceExecutorNode(Node):
 
         if self.phase_index >= len(self.phases):
             self.get_logger().info("Pick-place move complete.")
+
+            self.publish_robot_move_done()
+
             self.active = False
             self.latest_piece_pose = None
             self.latest_goal_pose = None
