@@ -206,9 +206,11 @@ def generate_launch_description():
         output="screen",
         parameters=[
             {
-                "selected_move_topic": "/checkers/selected_move",
+                "robot_move_topic": "/checkers/robot_move_command",
+                "player_move_topic": "/checkers/selected_player_move",
                 "piece_states_topic": "/checkers/piece_states",
                 "move_target_topic": "/checkers/move_targets",
+                "player_move_target_topic": "/checkers/player_move_targets",
                 "board_center_x": 0.6,
                 "board_center_y": 0.0,
                 "board_size": 0.40,

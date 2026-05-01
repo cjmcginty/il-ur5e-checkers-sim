@@ -27,33 +27,13 @@ class DQNPolicyNode(Node):
         self.declare_parameter("model_path", "")
         self.declare_parameter("device", "auto")
         self.declare_parameter("publish_once_per_position", True)
-        self.declare_parameter("republish_hz", 2.0)
 
-        self.board_state_topic = (
-            self.get_parameter("board_state_topic").get_parameter_value().string_value
-        )
-        self.legal_moves_topic = (
-            self.get_parameter("legal_moves_topic").get_parameter_value().string_value
-        )
-        self.selected_move_topic = (
-            self.get_parameter("selected_move_topic").get_parameter_value().string_value
-        )
-        self.model_path = (
-            self.get_parameter("model_path").get_parameter_value().string_value
-        )
-        self.device_param = (
-            self.get_parameter("device").get_parameter_value().string_value
-        )
-        self.publish_once_per_position = (
-            self.get_parameter("publish_once_per_position")
-            .get_parameter_value()
-            .bool_value
-        )
-        self.republish_hz = (
-            self.get_parameter("republish_hz")
-            .get_parameter_value()
-            .double_value
-        )
+        self.board_state_topic = self.get_parameter("board_state_topic").value
+        self.legal_moves_topic = self.get_parameter("legal_moves_topic").value
+        self.selected_move_topic = self.get_parameter("selected_move_topic").value
+        self.model_path = self.get_parameter("model_path").value
+        self.device_param = self.get_parameter("device").value
+        self.publish_once_per_position = self.get_parameter("publish_once_per_position").value
 
         if self.device_param == "auto":
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -68,7 +48,6 @@ class DQNPolicyNode(Node):
         self.latest_legal_move_strings: List[str] = []
         self.last_published_position_key: Optional[str] = None
         self.last_selected_move_str: Optional[str] = None
-        self.last_selected_position_key: Optional[str] = None
 
         self.selected_move_pub = self.create_publisher(
             String,
@@ -82,6 +61,7 @@ class DQNPolicyNode(Node):
             self.board_state_callback,
             10,
         )
+
         self.create_subscription(
             String,
             self.legal_moves_topic,
@@ -89,14 +69,13 @@ class DQNPolicyNode(Node):
             10,
         )
 
-        self.create_timer(1.0 / max(self.republish_hz, 0.1), self.republish_selected_move)
-
         self.load_model_if_possible()
 
         self.get_logger().info("DQN policy node started.")
         self.get_logger().info(f"Board state topic: {self.board_state_topic}")
         self.get_logger().info(f"Legal moves topic: {self.legal_moves_topic}")
-        self.get_logger().info(f"Selected move topic: {self.selected_move_topic}")
+        self.get_logger().info(f"Selected move proposal topic: {self.selected_move_topic}")
+        self.get_logger().info("DQN republishing is disabled.")
 
     def load_model_if_possible(self) -> None:
         if not self.model_path:
@@ -108,9 +87,7 @@ class DQNPolicyNode(Node):
 
         path = Path(self.model_path)
         if not path.exists():
-            self.get_logger().warning(
-                f"Model file does not exist: {self.model_path}"
-            )
+            self.get_logger().warning(f"Model file does not exist: {self.model_path}")
             return
 
         try:
@@ -134,7 +111,6 @@ class DQNPolicyNode(Node):
     def legal_moves_callback(self, msg: String) -> None:
         text = msg.data.strip()
 
-        # Try JSON first
         try:
             data = json.loads(text)
             if isinstance(data, list):
@@ -142,7 +118,6 @@ class DQNPolicyNode(Node):
             else:
                 self.latest_legal_move_strings = []
         except json.JSONDecodeError:
-            # Fallback: assume newline-separated plain text
             self.latest_legal_move_strings = [
                 line.strip()
                 for line in text.splitlines()
@@ -159,6 +134,7 @@ class DQNPolicyNode(Node):
             return
 
         if not self.latest_legal_move_strings:
+            self.last_selected_move_str = None
             return
 
         try:
@@ -174,6 +150,7 @@ class DQNPolicyNode(Node):
             return
 
         if not legal_moves:
+            self.last_selected_move_str = None
             return
 
         inferred_turn = self.infer_turn_from_legal_moves(board, legal_moves)
@@ -184,8 +161,8 @@ class DQNPolicyNode(Node):
             return
 
         board.turn = inferred_turn
-        
-        # Human/player is black. Robot/DQN only plays red.
+
+        # Robot/DQN is red only.
         if board.turn != "r":
             self.last_selected_move_str = None
             return
@@ -203,27 +180,14 @@ class DQNPolicyNode(Node):
 
         selected_move_str = self.move_to_string(selected_move)
 
-        self.last_selected_move_str = selected_move_str
-        self.last_selected_position_key = position_key
-
         msg = String()
         msg.data = selected_move_str
         self.selected_move_pub.publish(msg)
 
+        self.last_selected_move_str = selected_move_str
         self.last_published_position_key = position_key
 
-        self.get_logger().info(f"Published selected move: {selected_move_str}")
-
-    def republish_selected_move(self) -> None:
-        if not self.model_loaded:
-            return
-
-        if self.last_selected_move_str is None:
-            return
-
-        msg = String()
-        msg.data = self.last_selected_move_str
-        self.selected_move_pub.publish(msg)
+        self.get_logger().info(f"Published proposed DQN move: {selected_move_str}")
 
     def parse_board_state_text(self, board_text: str) -> CheckersBoard:
         lines = [line.strip() for line in board_text.strip().splitlines() if line.strip()]

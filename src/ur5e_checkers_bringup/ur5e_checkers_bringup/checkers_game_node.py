@@ -63,64 +63,27 @@ class CheckersGameNode(Node):
         self.pending_robot_move = None
         self.robot_move_in_progress = False
 
-        self.create_subscription(
-            String,
-            self.model_states_topic,
-            self.model_states_callback,
-            10,
-        )
+        self.create_subscription(String, self.model_states_topic, self.model_states_callback, 10)
+        self.create_subscription(String, self.selected_move_topic, self.selected_move_callback, 10)
+        self.create_subscription(String, self.robot_move_done_topic, self.robot_move_done_callback, 10)
 
-        self.create_subscription(
-            String,
-            self.selected_move_topic,
-            self.selected_move_callback,
-            10,
-        )
-
-        self.create_subscription(
-            String,
-            self.robot_move_done_topic,
-            self.robot_move_done_callback,
-            10,
-        )
-
-        self.board_state_pub = self.create_publisher(
-            String,
-            self.board_state_topic,
-            10,
-        )
-
-        self.legal_moves_pub = self.create_publisher(
-            String,
-            self.legal_moves_topic,
-            10,
-        )
-
-        self.game_event_pub = self.create_publisher(
-            String,
-            self.game_event_topic,
-            10,
-        )
+        self.board_state_pub = self.create_publisher(String, self.board_state_topic, 10)
+        self.legal_moves_pub = self.create_publisher(String, self.legal_moves_topic, 10)
+        self.game_event_pub = self.create_publisher(String, self.game_event_topic, 10)
 
         self.timer = self.create_timer(1.0 / self.update_hz, self.update_from_sim)
 
         self.get_logger().info("Checkers game node started.")
-        self.get_logger().info(f"Model states topic: {self.model_states_topic}")
-        self.get_logger().info(f"Board state topic: {self.board_state_topic}")
-        self.get_logger().info(f"Legal moves topic: {self.legal_moves_topic}")
-        self.get_logger().info(f"Game event topic: {self.game_event_topic}")
-        self.get_logger().info(f"Selected move topic: {self.selected_move_topic}")
-        self.get_logger().info(f"Robot move done topic: {self.robot_move_done_topic}")
         self.get_logger().info(f"Starting turn: {self.board.turn}")
         self.get_logger().info(f"Robot turn: {self.robot_turn}")
+        self.get_logger().info(f"Selected move topic: {self.selected_move_topic}")
+        self.get_logger().info(f"Robot move done topic: {self.robot_move_done_topic}")
 
     def model_states_callback(self, msg: String) -> None:
         try:
             data = json.loads(msg.data)
             if isinstance(data, list):
                 self.latest_model_states = data
-            else:
-                self.get_logger().warning("Received piece_states payload that is not a list.")
         except json.JSONDecodeError as e:
             self.get_logger().warning(f"Failed to decode piece_states JSON: {e}")
 
@@ -140,8 +103,7 @@ class CheckersGameNode(Node):
             self.get_logger().warning(f"Failed to parse selected robot move: {e}")
             return
 
-        legal_moves = self.board.legal_moves()
-        if move not in legal_moves:
+        if move not in self.board.legal_moves():
             self.get_logger().warning(
                 f"Ignoring selected robot move because it is not legal right now: "
                 f"{self.move_to_string(move)}"
@@ -152,7 +114,7 @@ class CheckersGameNode(Node):
         self.robot_move_in_progress = True
 
         self.get_logger().info(
-            f"Stored pending robot move and paused Gazebo board inference: "
+            f"Stored pending robot move and paused board inference: "
             f"{self.move_to_string(move)}"
         )
 
@@ -227,10 +189,7 @@ class CheckersGameNode(Node):
             self.publish_current_board_outputs()
             return
 
-        inferred_move = self.infer_move_from_board_change(
-            self.board.board,
-            detected_board,
-        )
+        inferred_move = self.infer_move_from_board_change(self.board.board, detected_board)
 
         if inferred_move is not None and inferred_move in self.board.legal_moves():
             self.apply_confirmed_move(inferred_move)
@@ -247,6 +206,7 @@ class CheckersGameNode(Node):
             "Could not match detected board change to a legal move. "
             "Ignoring this frame instead of syncing from simulation."
         )
+
         self.publish_current_board_outputs()
 
     def apply_confirmed_move(self, move) -> None:
@@ -257,9 +217,8 @@ class CheckersGameNode(Node):
 
             self.board.apply_move(move)
 
-            self.get_logger().info(
-                f"Applied move: {self.move_to_string(move)}"
-            )
+            self.get_logger().info(f"Applied move: {self.move_to_string(move)}")
+            self.get_logger().info(f"Turn after move: {self.board.turn}")
 
             if was_capture:
                 captured_squares = self.get_captured_squares(move)
@@ -273,25 +232,13 @@ class CheckersGameNode(Node):
                 f"Failed to apply move {self.move_to_string(move)}: {e}"
             )
 
-    def publish_promotion_events(self, old_board: List[List[str]]) -> None:
-        for row in range(8):
-            for col in range(8):
-                if old_board[row][col] == "r" and self.board.board[row][col] == "R":
-                    self.publish_game_event(
-                        {"type": "promote", "color": "red", "row": row, "col": col}
-                    )
-                elif old_board[row][col] == "b" and self.board.board[row][col] == "B":
-                    self.publish_game_event(
-                        {"type": "promote", "color": "black", "row": row, "col": col}
-                    )
-
     def publish_current_board_outputs(self) -> None:
         board_text = self.format_board(self.board.board)
-        legal_moves = self.board.legal_moves()
 
         if self.robot_move_in_progress:
             legal_move_strings = []
         else:
+            legal_moves = self.board.legal_moves()
             legal_move_strings = [self.move_to_string(move) for move in legal_moves]
 
         self.publish_board_state(board_text)
@@ -321,10 +268,6 @@ class CheckersGameNode(Node):
             )
 
             if row_col is None:
-                self.get_logger().warning(
-                    f"Piece '{model_name}' is off the board or could not be mapped "
-                    f"from pose ({x:.3f}, {y:.3f})."
-                )
                 continue
 
             row, col = row_col
@@ -584,6 +527,18 @@ class CheckersGameNode(Node):
         }
 
         self.publish_game_event(event)
+
+    def publish_promotion_events(self, old_board: List[List[str]]) -> None:
+        for row in range(8):
+            for col in range(8):
+                if old_board[row][col] == "r" and self.board.board[row][col] == "R":
+                    self.publish_game_event(
+                        {"type": "promote", "color": "red", "row": row, "col": col}
+                    )
+                elif old_board[row][col] == "b" and self.board.board[row][col] == "B":
+                    self.publish_game_event(
+                        {"type": "promote", "color": "black", "row": row, "col": col}
+                    )
 
     def apply_pending_removals(
         self,
